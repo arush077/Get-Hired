@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interview Platform</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <main class="card">
+    <h1>Interview Platform</h1>
+
+    <section id="setup-section">
+      <h2>Start Interview</h2>
+      <form id="setup-form">
+        <label for="candidate-name">Candidate Name</label>
+        <input type="text" id="candidate-name" required placeholder="e.g. John Doe" />
+
+        <label for="job-role">Job Role</label>
+        <input type="text" id="job-role" required placeholder="e.g. Software Engineer" />
+
+        <button type="submit">Start Interview</button>
+      </form>
+    </section>
+
+    <section id="interview-section" hidden>
+      <p class="q-count" id="q-count"></p>
+      <p id="question-text"></p>
+      <label for="answer-input">Your Answer</label>
+      <textarea id="answer-input" rows="6" placeholder="Type your answer here..."></textarea>
+      <div class="actions">
+        <button id="submit-btn">Submit Answer</button>
+      </div>
+    </section>
+
+    <section id="results-section" hidden>
+      <h2>Interview Results</h2>
+      <div id="results-list"></div>
+      <button id="restart-btn">Start New Interview</button>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
