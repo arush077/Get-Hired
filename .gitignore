@@ -9,6 +9,7 @@ build/
 *.egg
 
 .venv/
+.venv-*/
 venv/
 env/
 
@@ -25,3 +26,6 @@ Thumbs.db
 
 *.db
 *.sqlite3
+
+.opencode/
+.opencode
