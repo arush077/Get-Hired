@@ -40,6 +40,7 @@ class Interview:
     def advance(self) -> None:
         if self.current_question_index < len(self.questions) - 1:
             self.current_question_index += 1
-            self.status = self.status.next()
+            self.status = self.status.next()  # EVALUATING → NEXT_QUESTION
+            self.status = self.status.next()  # NEXT_QUESTION → WAITING_FOR_ANSWER
         else:
             self.status = InterviewState.COMPLETED

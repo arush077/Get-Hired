@@ -3,7 +3,7 @@ from uuid import UUID
 from domain.interview import Interview
 from domain.question import Question
 from domain.answer import Answer
-from infrastructure.repositories.interview_repository import InterviewRepository
+from infrastructure.repositories.base import InterviewRepositoryInterface
 
 HARDCODED_QUESTIONS = [
     "Tell me about yourself and your background.",
@@ -13,7 +13,7 @@ HARDCODED_QUESTIONS = [
 
 
 class InterviewService:
-    def __init__(self, repository: InterviewRepository):
+    def __init__(self, repository: InterviewRepositoryInterface):
         self._repository = repository
 
     def start_interview(self, candidate_name: str, job_role: str) -> Interview:
@@ -22,7 +22,8 @@ class InterviewService:
         for i, text in enumerate(HARDCODED_QUESTIONS):
             interview.questions.append(Question(text=text, order=i))
 
-        interview.status = interview.status.next()
+        interview.status = interview.status.next()  # CREATED → IN_PROGRESS
+        interview.status = interview.status.next()  # IN_PROGRESS → WAITING_FOR_ANSWER
         self._repository.save(interview)
         return interview
 
@@ -42,6 +43,9 @@ class InterviewService:
         has_next = interview.current_question_index < interview.total_questions - 1
         if has_next:
             interview.advance()
+        else:
+            from domain.interview_state import InterviewState
+            interview.status = InterviewState.COMPLETED
 
         self._repository.save(interview)
 

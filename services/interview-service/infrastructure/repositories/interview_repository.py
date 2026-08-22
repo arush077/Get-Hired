@@ -1,9 +1,10 @@
 from uuid import UUID
 
 from domain.interview import Interview
+from infrastructure.repositories.base import InterviewRepositoryInterface
 
 
-class InterviewRepository:
+class InterviewRepository(InterviewRepositoryInterface):
     def __init__(self):
         self._store: dict[UUID, Interview] = {}
 
