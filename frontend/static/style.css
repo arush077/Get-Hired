@@ -74,6 +74,23 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+#voice-select {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px;
+  border: 1px solid #ccd0d5;
+  border-radius: 6px;
+  background: #fff;
+}
+
 .q-count {
   color: #65676b;
   font-size: 13px;
@@ -87,9 +104,46 @@ button:disabled {
   margin: 0 0 8px;
 }
 
+.status {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eef1f5;
+  color: #444;
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+
+.status[data-state="speaking"] {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status[data-state="listening"] {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status[data-state="error"],
+.status[data-state="unsupported"] {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.transcript {
+  min-height: 120px;
+  border: 1px solid #dde1e6;
+  border-radius: 8px;
+  padding: 14px;
+  font-size: 15px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 .actions {
   display: flex;
   gap: 10px;
+  margin-top: 14px;
 }
 
 #results-section h2 {

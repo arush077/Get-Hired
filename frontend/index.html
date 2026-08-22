@@ -12,6 +12,10 @@
 
     <section id="setup-section">
       <h2>Start Interview</h2>
+      <div class="controls">
+        <label for="voice-select">Voice:</label>
+        <select id="voice-select"></select>
+      </div>
       <form id="setup-form">
         <label for="candidate-name">Candidate Name</label>
         <input type="text" id="candidate-name" required placeholder="e.g. John Doe" />
@@ -26,10 +30,12 @@
     <section id="interview-section" hidden>
       <p class="q-count" id="q-count"></p>
       <p id="question-text"></p>
-      <label for="answer-input">Your Answer</label>
-      <textarea id="answer-input" rows="6" placeholder="Type your answer here..."></textarea>
+      <span class="status" id="status" data-state="idle">Idle</span>
+
+      <div class="transcript" id="transcript" hidden></div>
+
       <div class="actions">
-        <button id="submit-btn">Submit Answer</button>
+        <button id="finish-btn" hidden>Finish Answer</button>
       </div>
     </section>
 
