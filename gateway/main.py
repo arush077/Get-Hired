@@ -1,10 +1,11 @@
 import os
 from pathlib import Path
 
+import edge_tts
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -60,6 +61,32 @@ async def proxy(path: str, request: Request):
                 content={"error": "Interview service unavailable"},
                 status_code=503,
             )
+
+
+@app.post("/tts")
+async def tts(request: Request):
+    body = await request.json()
+    text = body.get("text", "")
+    voice = body.get("voice", "en-US-AvaNeural")
+    speed = body.get("speed", 1.0)
+
+    if not text:
+        return JSONResponse(content={"error": "text is required"}, status_code=400)
+
+    # Convert float speed (0.5-2.0) to edge-tts rate string ("+0%", "+20%", "-10%")
+    speed_pct = int((speed - 1.0) * 100)
+    rate = f"+{speed_pct}%" if speed_pct >= 0 else f"{speed_pct}%"
+
+    print(f"[TTS] text={text!r} voice={voice} speed={speed} rate={rate}")
+
+    communicate = edge_tts.Communicate(text, voice, rate=rate)
+    audio_data = b""
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            audio_data += chunk["data"]
+
+    print(f"[TTS] generated {len(audio_data)} bytes")
+    return Response(content=audio_data, media_type="audio/mpeg")
 
 
 @app.get("/health")

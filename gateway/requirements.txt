@@ -3,3 +3,4 @@ uvicorn[standard]
 gunicorn
 httpx
 jinja2
+edge-tts

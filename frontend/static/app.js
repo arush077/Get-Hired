@@ -6,12 +6,27 @@ const qCountEl = document.getElementById("q-count");
 const questionEl = document.getElementById("question-text");
 const statusEl = document.getElementById("status");
 const transcriptEl = document.getElementById("transcript");
+const startAnswerBtn = document.getElementById("start-answer-btn");
 const finishBtn = document.getElementById("finish-btn");
 const resultsList = document.getElementById("results-list");
 const restartBtn = document.getElementById("restart-btn");
 const voiceSelect = document.getElementById("voice-select");
+const speedSlider = document.getElementById("speed-slider");
+const speedValue = document.getElementById("speed-value");
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+const VOICES = [
+  { value: "en-US-AvaNeural", label: "Ava (US, Female)" },
+  { value: "en-US-AndrewNeural", label: "Andrew (US, Male)" },
+  { value: "en-US-EmmaNeural", label: "Emma (US, Female)" },
+  { value: "en-US-BrianNeural", label: "Brian (US, Male)" },
+  { value: "en-GB-SoniaNeural", label: "Sonia (UK, Female)" },
+  { value: "en-GB-RyanNeural", label: "Ryan (UK, Male)" },
+  { value: "en-AU-NatashaNeural", label: "Natasha (AU, Female)" },
+  { value: "en-IN-PrabhatNeural", label: "Prabhat (IN, Male)" },
+  { value: "en-IE-EmilyNeural", label: "Emily (IE, Female)" },
+];
 
 let recognition = null;
 let listening = false;
@@ -19,30 +34,29 @@ let finalTranscript = "";
 let interviewId = null;
 let totalQuestions = 0;
 let currentIndex = 0;
-let voices = [];
+let currentAudio = null;
 
-speechSynthesis.onvoiceschanged = loadVoices;
-loadVoices();
+// Populate voice dropdown
+VOICES.forEach((v) => {
+  const option = document.createElement("option");
+  option.value = v.value;
+  option.textContent = v.label;
+  voiceSelect.appendChild(option);
+});
+
+// Speed slider display
+speedSlider.addEventListener("input", () => {
+  speedValue.textContent = `${parseFloat(speedSlider.value).toFixed(1)}x`;
+});
 
 setupForm.addEventListener("submit", startInterview);
+startAnswerBtn.addEventListener("click", startListening);
 finishBtn.addEventListener("click", finishAnswer);
 restartBtn.addEventListener("click", () => {
   resultsSection.hidden = true;
   setupSection.hidden = false;
   setStatus("idle");
 });
-
-function loadVoices() {
-  voices = speechSynthesis.getVoices();
-  if (!voices.length) return;
-  voiceSelect.innerHTML = "";
-  voices.forEach((voice) => {
-    const option = document.createElement("option");
-    option.value = voice.name;
-    option.textContent = `${voice.name} (${voice.lang})`;
-    voiceSelect.appendChild(option);
-  });
-}
 
 async function startInterview(e) {
   e.preventDefault();
@@ -56,6 +70,7 @@ async function startInterview(e) {
   interviewSection.hidden = false;
   transcriptEl.hidden = false;
   transcriptEl.textContent = "";
+  startAnswerBtn.hidden = true;
   finishBtn.hidden = true;
 
   const res = await fetch("/api/interviews", {
@@ -72,24 +87,81 @@ async function startInterview(e) {
   questionEl.textContent = data.question;
   qCountEl.textContent = `Question ${data.question_index + 1} of ${totalQuestions}`;
   setStatus("speaking");
-  speak(data.question, () => startListening());
+  await speak(data.question);
 }
 
-function speak(text, onDone) {
-  speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  const selected = voices.find((v) => v.name === voiceSelect.value);
-  if (selected) utterance.voice = selected;
-  utterance.onend = () => setTimeout(onDone, 400);
-  speechSynthesis.speak(utterance);
+async function speak(text) {
+  console.log("[TTS] START");
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.src = "";
+    currentAudio = null;
+  }
+
+  const res = await fetch("/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text,
+      voice: voiceSelect.value,
+      speed: parseFloat(speedSlider.value),
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error("TTS request failed");
+  }
+
+  const blob = await res.blob();
+
+  console.log("TTS:", {
+    type: blob.type,
+    size: blob.size,
+  });
+
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio();
+
+  currentAudio = audio;
+
+  audio.preload = "auto";
+  audio.src = url;
+
+  audio.onloadedmetadata = () => {
+    console.log("Audio duration:", audio.duration);
+  };
+
+  audio.onended = () => {
+    console.log("[TTS] END");
+
+    URL.revokeObjectURL(url);
+    currentAudio = null;
+
+    startAnswerBtn.hidden = false;
+    setStatus("listening");
+  };
+
+  audio.onerror = (e) => {
+    console.error("Audio playback error:", e);
+
+    URL.revokeObjectURL(url);
+    currentAudio = null;
+
+    startAnswerBtn.hidden = false;
+    setStatus("listening");
+  };
+
+  await audio.play();
 }
 
 function startListening() {
+  console.log("[STT] START");
   if (!SpeechRecognition) {
     setStatus("unsupported");
     return;
   }
 
+  startAnswerBtn.hidden = true;
   setStatus("listening");
   finishBtn.hidden = false;
   listening = true;
@@ -118,25 +190,73 @@ function startListening() {
     if (event.error === "not-allowed") {
       listening = false;
       finishBtn.hidden = true;
+      startAnswerBtn.hidden = true;
       setStatus("error");
     }
   };
 
   recognition.onend = () => {
+    console.log("[STT] ended");
     if (listening) {
-      try {
-        recognition.start();
-      } catch (_) {}
+      console.log("[STT] unexpectedly ended");
+      listening = false;
+      finishBtn.hidden = true;
+      startAnswerBtn.hidden = false;
     }
   };
 
   recognition.start();
 }
 
+function stopListening() {
+  return new Promise((resolve) => {
+    listening = false;
+
+    if (!recognition) {
+      console.log("[STT] Fully stopped - no instance");
+      resolve();
+      return;
+    }
+
+    const r = recognition;
+
+    console.log("[STT] Requesting stop...");
+
+    r.onend = () => {
+      console.log("[STT] Fully stopped");
+
+      if (recognition === r) {
+        recognition = null;
+      }
+
+      resolve();
+    };
+
+    try {
+      r.stop();
+    } catch (e) {
+      console.log("[STT] stop() error:", e);
+
+      if (recognition === r) {
+        recognition = null;
+      }
+
+      resolve();
+    }
+  });
+}
+
 async function finishAnswer() {
-  listening = false;
-  if (recognition) recognition.stop();
   finishBtn.hidden = true;
+  startAnswerBtn.hidden = true;
+
+  // Wait until Chrome actually releases STT
+  await stopListening();
+
+  // TEST: 3 second delay to prove/disprove mic release timing hypothesis
+  console.log("[AUDIO] Waiting 2s before TTS...");
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  console.log("[AUDIO] Starting TTS");
 
   const transcript = finalTranscript.trim();
 
@@ -153,7 +273,8 @@ async function finishAnswer() {
     qCountEl.textContent = `Question ${currentIndex + 1} of ${totalQuestions}`;
     transcriptEl.textContent = "";
     setStatus("speaking");
-    speak(data.next_question, () => startListening());
+    // Mic is GUARANTEED to have stopped here
+    await speak(data.next_question);
   } else {
     await showResults();
   }

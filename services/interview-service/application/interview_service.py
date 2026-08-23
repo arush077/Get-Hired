@@ -6,9 +6,9 @@ from domain.answer import Answer
 from infrastructure.repositories.base import InterviewRepositoryInterface
 
 HARDCODED_QUESTIONS = [
-    "Tell me about yourself and your background.",
-    "Describe a challenging project you worked on recently. What made it difficult?",
-    "Where do you see yourself professionally in the next three years?",
+    "Tell me about yourself and your background.Where do you see yourself professionally in the next three years?Where do you see yourself professionally in the next three years?",
+    "Describe a challenging project you worked on recently, and what made it difficult? Where do you see yourself professionally in the next three years?",
+    "Where do you see yourself professionally in the next three years?Describe a challenging project you worked on recentlyDescribe a challenging project you worked on recentlyDescribe a challenging project you worked on recently",
 ]
 
 
