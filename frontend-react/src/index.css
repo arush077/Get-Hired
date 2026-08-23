@@ -16,7 +16,7 @@
 }
 
 .brand-marquee-track {
-  animation: marquee 30s linear infinite;
+  animation: marquee 50s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

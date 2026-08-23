@@ -20,7 +20,7 @@ export function InsightsSection() {
   const chars = FULL_TEXT.split("");
 
   return (
-    <section ref={containerRef} className="px-6 py-20 md:py-32">
+    <section ref={containerRef} className="px-6 pt-10 pb-20 md:pt-16 md:pb-32">
       <div className="mx-auto max-w-4xl text-center">
         <motion.span
           className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-50"

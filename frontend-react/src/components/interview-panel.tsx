@@ -40,7 +40,7 @@ export function InterviewPanel({
         </div>
       )}
 
-      <div className="flex flex-col gap-3 pt-8">
+      <div className="flex flex-col gap-3">
         {showStartBtn && (
           <button
             onClick={onStartAnswer}

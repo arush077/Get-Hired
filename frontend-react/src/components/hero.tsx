@@ -7,10 +7,10 @@ import { Link } from "react-router-dom";
 import { AnimatedLines } from "./animated-lines";
 
 const stats = [
-  { value: 100, suffix: "%", label: "Uptime" },
-  { value: 3, suffix: "x", label: "Faster Insights" },
-  { value: 92, suffix: "%", label: "Less Manual Work" },
-  { value: 40, suffix: "+", label: "Integrations" },
+  { label: "Real-time Feedback", text: "AI Powered" },
+  { label: "Voice Options", value: 9, suffix: "" },
+  { label: "Pricing", value: 0, suffix: "$" },
+  { label: "Browser-based", text: "Zero Setup" },
 ];
 
 function AnimatedNumber({ value, suffix }: { value: number; suffix: string }) {
@@ -42,7 +42,7 @@ function AnimatedNumber({ value, suffix }: { value: number; suffix: string }) {
 
 export function Hero() {
   return (
-    <section className="relative px-4 pt-28 pb-0 sm:px-6 md:pt-32">
+    <section className="relative px-4 pt-16 pb-0 sm:px-6 md:pt-18">
       <div className="relative mx-auto w-full max-w-7xl overflow-hidden rounded-3xl bg-gradient-to-b from-pink-500 via-red-600 to-red-700 px-6 py-20 sm:px-10 md:py-20">
         <AnimatedLines />
 
@@ -97,7 +97,7 @@ export function Hero() {
           {stats.map((stat) => (
             <div key={stat.label} className="text-center">
               <p className="text-3xl font-bold text-white sm:text-4xl md:text-5xl">
-                <AnimatedNumber value={stat.value} suffix={stat.suffix} />
+                {"text" in stat ? stat.text : <AnimatedNumber value={stat.value} suffix={stat.suffix} />}
               </p>
               <p className="mt-1 text-sm text-white/70">{stat.label}</p>
             </div>
