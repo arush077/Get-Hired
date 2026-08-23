@@ -16,7 +16,7 @@ class InterviewService:
     def __init__(self, repository: InterviewRepositoryInterface):
         self._repository = repository
 
-    def start_interview(self, candidate_name: str, job_role: str) -> Interview:
+    async def start_interview(self, candidate_name: str, job_role: str) -> Interview:
         interview = Interview(candidate_name=candidate_name, job_role=job_role)
 
         for i, text in enumerate(HARDCODED_QUESTIONS):
@@ -24,14 +24,14 @@ class InterviewService:
 
         interview.status = interview.status.next()  # CREATED → IN_PROGRESS
         interview.status = interview.status.next()  # IN_PROGRESS → WAITING_FOR_ANSWER
-        self._repository.save(interview)
+        await self._repository.save(interview)
         return interview
 
-    def get_interview(self, interview_id: UUID) -> Interview | None:
-        return self._repository.get(interview_id)
+    async def get_interview(self, interview_id: UUID) -> Interview | None:
+        return await self._repository.get(interview_id)
 
-    def submit_answer(self, interview_id: UUID, transcript: str) -> dict | None:
-        interview = self._repository.get(interview_id)
+    async def submit_answer(self, interview_id: UUID, transcript: str) -> dict | None:
+        interview = await self._repository.get(interview_id)
         if not interview:
             return None
         if not interview.status.can_accept_answer():
@@ -47,7 +47,7 @@ class InterviewService:
             from domain.interview_state import InterviewState
             interview.status = InterviewState.COMPLETED
 
-        self._repository.save(interview)
+        await self._repository.save(interview)
 
         result = {
             "interview_id": str(interview.id),
@@ -66,8 +66,8 @@ class InterviewService:
 
         return result
 
-    def get_results(self, interview_id: UUID) -> dict | None:
-        interview = self._repository.get(interview_id)
+    async def get_results(self, interview_id: UUID) -> dict | None:
+        interview = await self._repository.get(interview_id)
         if not interview:
             return None
 

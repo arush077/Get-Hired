@@ -16,11 +16,11 @@ router = APIRouter(prefix="/interviews", tags=["interviews"])
 
 
 @router.post("", response_model=StartInterviewResponse)
-def start_interview(
+async def start_interview(
     payload: StartInterviewRequest,
     service: InterviewService = Depends(get_interview_service),
 ):
-    interview = service.start_interview(payload.candidate_name, payload.job_role)
+    interview = await service.start_interview(payload.candidate_name, payload.job_role)
     question = interview.current_question()
     return StartInterviewResponse(
         interview_id=str(interview.id),
@@ -31,7 +31,7 @@ def start_interview(
 
 
 @router.get("/{interview_id}/results", response_model=InterviewResultResponse)
-def get_results(
+async def get_results(
     interview_id: str,
     service: InterviewService = Depends(get_interview_service),
 ):
@@ -40,7 +40,7 @@ def get_results(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid interview ID")
 
-    results = service.get_results(uid)
+    results = await service.get_results(uid)
     if not results:
         raise HTTPException(status_code=404, detail="Interview not found")
 
@@ -48,7 +48,7 @@ def get_results(
 
 
 @router.post("/{interview_id}/answers", response_model=AnswerResponse)
-def submit_answer(
+async def submit_answer(
     interview_id: str,
     payload: AnswerRequest,
     service: InterviewService = Depends(get_interview_service),
@@ -58,7 +58,7 @@ def submit_answer(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid interview ID")
 
-    result = service.submit_answer(uid, payload.transcript)
+    result = await service.submit_answer(uid, payload.transcript)
     if not result:
         raise HTTPException(status_code=404, detail="Interview not found or invalid state")
 

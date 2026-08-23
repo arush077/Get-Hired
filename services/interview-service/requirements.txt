@@ -2,3 +2,7 @@ fastapi
 uvicorn[standard]
 gunicorn
 pydantic
+sqlalchemy[asyncio]
+asyncpg
+alembic
+python-dotenv
