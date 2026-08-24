@@ -1,5 +1,6 @@
 import { Header } from "../components/header";
 import { SetupForm } from "../components/setup-form";
+import { DocumentForm } from "../components/document-form";
 import { InterviewPanel } from "../components/interview-panel";
 import { ResultsPanel } from "../components/results-panel";
 import { AnimatedLines } from "../components/animated-lines";
@@ -14,6 +15,7 @@ export function Interview() {
     totalQuestions,
     results,
     transcript,
+    goToDocuments,
     start,
     startAnswer,
     finishAnswer,
@@ -37,7 +39,25 @@ export function Interview() {
                 <h1 className="text-2xl font-bold text-neutral-50 mb-6">
                   Start Interview
                 </h1>
-                <SetupForm onStart={start} />
+                <SetupForm onStart={goToDocuments} />
+              </motion.div>
+            )}
+
+            {state === "documents" && (
+              <motion.div
+                key="documents"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="rounded-3xl bg-neutral-900/50 backdrop-blur-xl border border-neutral-800 p-8"
+              >
+                <h1 className="text-2xl font-bold text-neutral-50 mb-2">
+                  Upload Documents
+                </h1>
+                <p className="text-sm text-neutral-400 mb-6">
+                  Paste your resume and job description for personalized questions
+                </p>
+                <DocumentForm onSubmit={start} />
               </motion.div>
             )}
 

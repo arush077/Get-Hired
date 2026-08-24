@@ -20,7 +20,12 @@ async def start_interview(
     payload: StartInterviewRequest,
     service: InterviewService = Depends(get_interview_service),
 ):
-    interview = await service.start_interview(payload.candidate_name, payload.job_role)
+    interview = await service.start_interview(
+        candidate_name=payload.candidate_name,
+        job_role=payload.job_role,
+        resume_text=payload.resume_text,
+        jd_text=payload.jd_text,
+    )
     question = interview.current_question()
     return StartInterviewResponse(
         interview_id=str(interview.id),

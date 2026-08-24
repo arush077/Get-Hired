@@ -8,6 +8,7 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:8003',
       '/tts': 'http://localhost:8003',
+      '/rag': 'http://localhost:8004',
     },
   },
 })

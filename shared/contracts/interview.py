@@ -4,6 +4,8 @@ from pydantic import BaseModel
 class StartInterviewRequest(BaseModel):
     candidate_name: str
     job_role: str
+    resume_text: str
+    jd_text: str
 
 
 class StartInterviewResponse(BaseModel):
@@ -24,6 +26,7 @@ class AnswerResponse(BaseModel):
     status: str
     next_question: str | None = None
     next_question_index: int | None = None
+    total_questions: int | None = None
 
 
 class QuestionResult(BaseModel):

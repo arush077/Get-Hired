@@ -3,6 +3,7 @@ import os
 from contextlib import asynccontextmanager
 
 sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,3 +36,8 @@ app.include_router(interview_router)
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "interview-service"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)

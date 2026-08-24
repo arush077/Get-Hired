@@ -11,6 +11,7 @@ export interface InterviewStartResponse {
 export interface AnswerResponse {
   next_question?: string;
   next_question_index?: number;
+  total_questions?: number;
 }
 
 export interface ResultItem {
@@ -25,12 +26,19 @@ export interface ResultsResponse {
 
 export async function startInterview(
   candidateName: string,
-  jobRole: string
+  jobRole: string,
+  resumeText: string,
+  jdText: string
 ): Promise<InterviewStartResponse> {
   const res = await fetch(`${API_BASE}/interviews`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ candidate_name: candidateName, job_role: jobRole }),
+    body: JSON.stringify({
+      candidate_name: candidateName,
+      job_role: jobRole,
+      resume_text: resumeText,
+      jd_text: jdText,
+    }),
   });
   if (!res.ok) throw new Error("Failed to start interview");
   return res.json();

@@ -92,3 +92,8 @@ async def tts(request: Request):
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "gateway"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8003)

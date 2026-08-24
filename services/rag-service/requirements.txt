@@ -6,5 +6,5 @@ sqlalchemy[asyncio]
 asyncpg
 alembic
 python-dotenv
-groq>=0.4.0
+pgvector
 httpx
