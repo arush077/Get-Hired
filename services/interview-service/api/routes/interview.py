@@ -25,6 +25,7 @@ async def start_interview(
         job_role=payload.job_role,
         resume_text=payload.resume_text,
         jd_text=payload.jd_text,
+        total_questions=payload.total_questions,
     )
     question = interview.current_question()
     return StartInterviewResponse(

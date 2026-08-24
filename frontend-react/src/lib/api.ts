@@ -38,6 +38,7 @@ export async function startInterview(
       job_role: jobRole,
       resume_text: resumeText,
       jd_text: jdText,
+      total_questions: 10,
     }),
   });
   if (!res.ok) throw new Error("Failed to start interview");

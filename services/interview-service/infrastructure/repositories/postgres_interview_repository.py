@@ -1,3 +1,4 @@
+import json
 from uuid import UUID
 
 from sqlalchemy import select
@@ -6,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from domain.answer import Answer
 from domain.interview import Interview
-from domain.question import Question
+from domain.question import Question, QuestionType
 from infrastructure.db.models import AnswerModel, InterviewModel, QuestionModel
 from infrastructure.db.session import async_session_factory
 from infrastructure.repositories.base import InterviewRepositoryInterface
@@ -26,6 +27,9 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                     existing.job_role = interview.job_role
                     existing.status = interview.status.value
                     existing.current_question_index = interview.current_question_index
+                    existing.total_questions = interview.total_questions
+                    existing.topics = json.dumps(interview.topics)
+                    existing.topics_covered = json.dumps(interview.topics_covered)
 
                     for q in interview.questions:
                         q_exists = await session.get(QuestionModel, q.id)
@@ -36,6 +40,7 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                                     interview_id=interview.id,
                                     question_text=q.text,
                                     question_index=q.order,
+                                    question_type=q.question_type.value,
                                 )
                             )
 
@@ -66,6 +71,9 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                         job_role=interview.job_role,
                         status=interview.status.value,
                         current_question_index=interview.current_question_index,
+                        total_questions=interview.total_questions,
+                        topics=json.dumps(interview.topics),
+                        topics_covered=json.dumps(interview.topics_covered),
                     )
                     session.add(db_interview)
 
@@ -76,6 +84,7 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                                 interview_id=interview.id,
                                 question_text=q.text,
                                 question_index=q.order,
+                                question_type=q.question_type.value,
                             )
                         )
 
@@ -131,7 +140,12 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
 
         questions = sorted(db_interview.questions, key=lambda q: q.question_index)
         domain_questions = [
-            Question(id=q.id, text=q.question_text, order=q.question_index)
+            Question(
+                id=q.id,
+                text=q.question_text,
+                question_type=QuestionType(q.question_type),
+                order=q.question_index,
+            )
             for q in questions
         ]
 
@@ -153,4 +167,7 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
             questions=domain_questions,
             answers=answers_dict,
             current_question_index=db_interview.current_question_index,
+            total_questions=db_interview.total_questions,
+            topics=json.loads(db_interview.topics),
+            topics_covered=json.loads(db_interview.topics_covered),
         )

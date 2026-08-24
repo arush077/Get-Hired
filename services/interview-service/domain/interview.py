@@ -15,10 +15,9 @@ class Interview:
     questions: list[Question] = field(default_factory=list)
     answers: dict[int, Answer] = field(default_factory=dict)
     current_question_index: int = 0
-
-    @property
-    def total_questions(self) -> int:
-        return len(self.questions)
+    total_questions: int = 10
+    topics: list[str] = field(default_factory=list)
+    topics_covered: list[str] = field(default_factory=list)
 
     @property
     def answered_count(self) -> int:
@@ -40,7 +39,7 @@ class Interview:
     def advance(self) -> None:
         if self.current_question_index < len(self.questions) - 1:
             self.current_question_index += 1
-            self.status = self.status.next()  # EVALUATING → NEXT_QUESTION
-            self.status = self.status.next()  # NEXT_QUESTION → WAITING_FOR_ANSWER
+            self.status = self.status.next()  # EVALUATING -> NEXT_QUESTION
+            self.status = self.status.next()  # NEXT_QUESTION -> WAITING_FOR_ANSWER
         else:
             self.status = InterviewState.COMPLETED

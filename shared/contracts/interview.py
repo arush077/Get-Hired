@@ -6,6 +6,7 @@ class StartInterviewRequest(BaseModel):
     job_role: str
     resume_text: str
     jd_text: str
+    total_questions: int = 10
 
 
 class StartInterviewResponse(BaseModel):

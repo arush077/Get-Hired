@@ -2,11 +2,13 @@ from infrastructure.repositories.base import InterviewRepositoryInterface
 from infrastructure.repositories.postgres_interview_repository import PostgresInterviewRepository
 from application.llm_service import LLMService
 from application.rag_client import RAGClient
+from application.question_planner import QuestionPlanner
 from application.interview_service import InterviewService
 
 _repository: InterviewRepositoryInterface | None = None
 _llm_service: LLMService | None = None
 _rag_client: RAGClient | None = None
+_planner: QuestionPlanner | None = None
 
 
 def get_repository() -> InterviewRepositoryInterface:
@@ -30,9 +32,17 @@ def get_rag_client() -> RAGClient:
     return _rag_client
 
 
+def get_question_planner() -> QuestionPlanner:
+    global _planner
+    if _planner is None:
+        _planner = QuestionPlanner(rag=get_rag_client(), llm=get_llm_service())
+    return _planner
+
+
 def get_interview_service() -> InterviewService:
     return InterviewService(
         repository=get_repository(),
         llm_service=get_llm_service(),
         rag_client=get_rag_client(),
+        planner=get_question_planner(),
     )
