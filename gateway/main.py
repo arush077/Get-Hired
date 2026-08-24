@@ -19,15 +19,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+SKIP_HEADERS = {"host", "accept-encoding", "content-length", "transfer-encoding"}
+
 
 def _safe_json(resp: httpx.Response):
-    content = resp.text
-    if "application/json" in resp.headers.get("content-type", ""):
+    content_type = resp.headers.get("content-type", "")
+    if "application/json" in content_type:
         try:
-            content = resp.json()
+            return resp.json()
         except Exception:
             pass
-    return content
+    return resp.text
 
 
 @app.api_route(
@@ -37,10 +39,9 @@ def _safe_json(resp: httpx.Response):
 )
 async def proxy_api(path: str, request: Request):
     body = await request.body()
-    headers = dict(request.headers)
-    headers.pop("host", None)
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in SKIP_HEADERS}
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
         try:
             resp = await client.request(
                 method=request.method,
@@ -63,10 +64,9 @@ async def proxy_api(path: str, request: Request):
 )
 async def proxy_rag(path: str, request: Request):
     body = await request.body()
-    headers = dict(request.headers)
-    headers.pop("host", None)
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in SKIP_HEADERS}
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
         try:
             resp = await client.request(
                 method=request.method,
