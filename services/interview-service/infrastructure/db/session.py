@@ -8,7 +8,11 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:123456@localhost:5432/interviewready")
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+connect_args = {}
+if "localhost" not in DATABASE_URL:
+    connect_args["ssl"] = "require"
+
+engine = create_async_engine(DATABASE_URL, echo=False, connect_args=connect_args)
 
 async_session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
