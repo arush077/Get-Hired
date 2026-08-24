@@ -1,5 +1,5 @@
-const API_BASE = "/api";
-const TTS_BASE = "/tts";
+const API_BASE = import.meta.env.VITE_API_URL || "/api";
+const TTS_BASE = import.meta.env.VITE_TTS_URL || "/tts";
 
 export interface InterviewStartResponse {
   interview_id: string;

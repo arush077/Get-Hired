@@ -1,0 +1,61 @@
+services:
+  # Gateway - main entry point, proxies to interview + rag services
+  - type: web
+    name: interview-ready-gateway
+    runtime: python
+    rootDir: gateway
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: INTERVIEW_SERVICE_URL
+        value: http://interview-ready-interview:8001
+      - key: RAG_SERVICE_URL
+        value: http://interview-ready-rag:8004
+      - key: PYTHON_VERSION
+        value: 3.12.0
+
+  # Interview Service
+  - type: web
+    name: interview-ready-interview
+    runtime: python
+    rootDir: services/interview-service
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: interview-ready-db
+          property: connectionString
+      - key: GROQ_API_KEY
+        sync: false
+      - key: RAG_SERVICE_URL
+        value: http://interview-ready-rag:8004
+      - key: PYTHON_VERSION
+        value: 3.12.0
+
+  # RAG Service
+  - type: web
+    name: interview-ready-rag
+    runtime: python
+    rootDir: services/rag-service
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: interview-ready-db
+          property: connectionString
+      - key: JINA_API_KEY
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.12.0
+
+  # PostgreSQL Database
+  - type: pgsql
+    name: interview-ready-db
+    plan: free
+    databaseName: interviewready
+    user: admin
