@@ -20,6 +20,16 @@ app.add_middleware(
 )
 
 
+def _safe_json(resp: httpx.Response):
+    content = resp.text
+    if "application/json" in resp.headers.get("content-type", ""):
+        try:
+            content = resp.json()
+        except Exception:
+            pass
+    return content
+
+
 @app.api_route(
     "/api/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
@@ -38,10 +48,7 @@ async def proxy_api(path: str, request: Request):
                 headers=headers,
                 content=body if body else None,
             )
-            content = resp.text
-            if resp.headers.get("content-type", "").startswith("application/json"):
-                content = resp.json()
-            return JSONResponse(content=content, status_code=resp.status_code)
+            return JSONResponse(content=_safe_json(resp), status_code=resp.status_code)
         except httpx.ConnectError:
             return JSONResponse(
                 content={"error": "Interview service unavailable"},
@@ -67,10 +74,7 @@ async def proxy_rag(path: str, request: Request):
                 headers=headers,
                 content=body if body else None,
             )
-            content = resp.text
-            if resp.headers.get("content-type", "").startswith("application/json"):
-                content = resp.json()
-            return JSONResponse(content=content, status_code=resp.status_code)
+            return JSONResponse(content=_safe_json(resp), status_code=resp.status_code)
         except httpx.ConnectError:
             return JSONResponse(
                 content={"error": "RAG service unavailable"},

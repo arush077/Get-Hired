@@ -9,11 +9,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes.interview import router as interview_router
+from infrastructure.db.models import Base
 from infrastructure.db.session import engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
     print("[DB] PostgreSQL connected")
     yield
     await engine.dispose()
