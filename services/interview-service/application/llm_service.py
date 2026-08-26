@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 
@@ -6,6 +7,8 @@ from dotenv import load_dotenv
 from groq import Groq
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 GROQ_MODEL = "openai/gpt-oss-120b"
 MAX_RETRIES = 3
@@ -72,14 +75,14 @@ class LLMService:
         text = text.strip()
         if text.startswith("{") or text.startswith("```"):
             return False
-        if len(text) > 300:
+        if len(text) > 400:
             return False
         word_count = len(text.split())
-        if word_count < 5 or word_count > 50:
+        if word_count < 3 or word_count > 60:
             return False
         return True
 
-    def _generate_with_retry(self, messages: list[dict], max_tokens: int = 256) -> str:
+    def _generate_with_retry(self, messages: list[dict], max_tokens: int = 512) -> str:
         for attempt in range(MAX_RETRIES):
             raw = self._chat(messages, max_tokens=max_tokens)
             try:
@@ -87,18 +90,27 @@ class LLMService:
                 question = data.get("question", "")
                 if self._validate_question(question):
                     return question
-            except (ValueError, KeyError):
-                pass
+                logger.warning(
+                    "[LLM] question validation failed (attempt %d): %r",
+                    attempt + 1, question[:100],
+                )
+            except (ValueError, KeyError) as e:
+                logger.warning(
+                    "[LLM] JSON parse failed (attempt %d): %s | raw: %r",
+                    attempt + 1, e, raw[:200],
+                )
 
             if attempt == MAX_RETRIES - 1:
                 match = re.search(r'"question"\s*:\s*"([^"]+)"', raw)
                 if match and self._validate_question(match.group(1)):
                     return match.group(1)
-                # Last resort: find any sentence-like string
                 match = re.search(r"([A-Z][^.?!]{10,200}[.?!])", raw)
                 if match and self._validate_question(match.group(1)):
                     return match.group(1)
-                return "Can you tell me more about your experience?"
+                logger.error(
+                    "[LLM] all retries exhausted, using fallback. Last raw: %r",
+                    raw[:300],
+                )
         return "Can you tell me more about your experience?"
 
     def generate_hr_question(self, candidate_name: str, job_role: str, variant: str) -> str:

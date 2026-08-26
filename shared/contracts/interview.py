@@ -28,7 +28,7 @@ class AnalysisResult(BaseModel):
 
 class AnswerResponse(BaseModel):
     interview_id: str
-    question_index: int
+    question_index: int | None = None
     answered_count: int
     status: str
     next_question: str | None = None

@@ -50,7 +50,9 @@ class DocumentRepository(DocumentRepositoryInterface):
                 .limit(top_k)
             )
 
-            if document_ids:
+            if document_ids is not None:
+                if len(document_ids) == 0:
+                    return []
                 query = query.where(DocumentChunkModel.document_id.in_(document_ids))
             elif document_type:
                 query = query.join(
