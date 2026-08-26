@@ -23,7 +23,6 @@ app.add_middleware(
 SKIP_HEADERS = {"host", "accept-encoding", "content-length", "transfer-encoding"}
 RETRY_DELAYS = [2, 4, 8]
 RETRYABLE_STATUS = {502, 503, 504}
-RATE_LIMIT_DELAYS = [10, 20, 40]
 
 
 def _safe_json(resp: httpx.Response):
@@ -47,14 +46,10 @@ async def _proxy_with_retry(
                 )
             if resp.status_code == 429:
                 retry_after = resp.headers.get("retry-after")
-                if retry_after:
-                    delay = int(retry_after)
-                elif attempt < len(RATE_LIMIT_DELAYS):
-                    delay = RATE_LIMIT_DELAYS[attempt]
-                else:
-                    return resp
-                await asyncio.sleep(delay)
-                continue
+                if retry_after and attempt == 0:
+                    await asyncio.sleep(int(retry_after))
+                    continue
+                return resp
             if resp.status_code in RETRYABLE_STATUS and attempt < len(RETRY_DELAYS):
                 await asyncio.sleep(RETRY_DELAYS[attempt])
                 continue

@@ -59,6 +59,12 @@ export function useInterview() {
         setState("speaking");
         await tts.speak(data.question, DEFAULT_VOICE, DEFAULT_SPEED);
         setState("ready");
+      } catch (err) {
+        console.error("[INTERVIEW] start error:", err);
+        const message =
+          err instanceof Error ? err.message : "Something went wrong. Please try again.";
+        setError(message);
+        setState("documents");
       } finally {
         setLoading(false);
       }

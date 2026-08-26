@@ -65,6 +65,11 @@ export function Interview() {
                   </div>
                 ) : (
                   <>
+                    {error && (
+                      <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/25 text-red-300 text-sm">
+                        {error}
+                      </div>
+                    )}
                     <h1 className="text-2xl font-bold text-neutral-50 mb-2">
                       Upload Documents
                     </h1>

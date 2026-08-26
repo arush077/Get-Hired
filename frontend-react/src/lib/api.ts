@@ -71,7 +71,14 @@ export async function startInterview(
       total_questions: 10,
     }),
   });
-  if (!res.ok) throw new Error("Failed to start interview");
+  if (!res.ok) {
+    let detail = "Failed to start interview";
+    try {
+      const body = await res.json();
+      if (body.detail) detail = body.detail;
+    } catch {}
+    throw new Error(detail);
+  }
   return res.json();
 }
 

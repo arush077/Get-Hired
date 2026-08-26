@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 
 import httpx
@@ -6,17 +7,27 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 RAG_SERVICE_URL = os.getenv("RAG_SERVICE_URL", "http://localhost:8004")
 
 RETRY_DELAYS = [2, 4, 8]
 RETRYABLE_STATUS = {502, 503, 504}
-RATE_LIMIT_DELAYS = [10, 20, 40]
 
 
 class RAGClient:
     def __init__(self):
         self._base_url = RAG_SERVICE_URL
         self._client = httpx.AsyncClient(timeout=90.0)
+
+    async def warm_up(self) -> bool:
+        try:
+            resp = await self._client.get(
+                f"{self._base_url}/health", timeout=5.0
+            )
+            return resp.status_code == 200
+        except (httpx.TimeoutException, httpx.ConnectError):
+            return False
 
     async def _request_with_retry(
         self, method: str, url: str, **kwargs
@@ -28,14 +39,10 @@ class RAGClient:
                 )
                 if response.status_code == 429:
                     retry_after = response.headers.get("retry-after")
-                    if retry_after:
-                        delay = int(retry_after)
-                    elif attempt < len(RATE_LIMIT_DELAYS):
-                        delay = RATE_LIMIT_DELAYS[attempt]
-                    else:
-                        response.raise_for_status()
-                    await asyncio.sleep(delay)
-                    continue
+                    if retry_after and attempt == 0:
+                        await asyncio.sleep(int(retry_after))
+                        continue
+                    response.raise_for_status()
                 if response.status_code in RETRYABLE_STATUS and attempt < len(RETRY_DELAYS):
                     await asyncio.sleep(RETRY_DELAYS[attempt])
                     continue
@@ -50,6 +57,10 @@ class RAGClient:
     async def ingest_documents(
         self, resume_text: str, jd_text: str, interview_id: str
     ) -> dict:
+        is_warm = await self.warm_up()
+        if not is_warm:
+            logger.warning("RAG service warm-up failed, proceeding with retries")
+
         response = await self._request_with_retry(
             "POST",
             f"{self._base_url}/rag/ingest",
