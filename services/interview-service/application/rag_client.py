@@ -10,6 +10,7 @@ RAG_SERVICE_URL = os.getenv("RAG_SERVICE_URL", "http://localhost:8004")
 
 RETRY_DELAYS = [2, 4, 8]
 RETRYABLE_STATUS = {502, 503, 504}
+RATE_LIMIT_DELAYS = [10, 20, 40]
 
 
 class RAGClient:
@@ -25,6 +26,16 @@ class RAGClient:
                 response = await self._client.request(
                     method, url, timeout=90.0, **kwargs
                 )
+                if response.status_code == 429:
+                    retry_after = response.headers.get("retry-after")
+                    if retry_after:
+                        delay = int(retry_after)
+                    elif attempt < len(RATE_LIMIT_DELAYS):
+                        delay = RATE_LIMIT_DELAYS[attempt]
+                    else:
+                        response.raise_for_status()
+                    await asyncio.sleep(delay)
+                    continue
                 if response.status_code in RETRYABLE_STATUS and attempt < len(RETRY_DELAYS):
                     await asyncio.sleep(RETRY_DELAYS[attempt])
                     continue
