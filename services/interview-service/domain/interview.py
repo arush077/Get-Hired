@@ -18,6 +18,7 @@ class Interview:
     total_questions: int = 10
     topics: list[str] = field(default_factory=list)
     topics_covered: list[str] = field(default_factory=list)
+    analysis: dict | None = None
 
     @property
     def answered_count(self) -> int:

@@ -281,3 +281,46 @@ class LLMService:
             },
         ]
         return self._generate_with_retry(messages)
+
+    def generate_analysis(self, transcript: str) -> dict:
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert interview evaluator. "
+                    "Analyze the completed interview below and provide a structured evaluation.\n\n"
+                    "RULES:\n"
+                    "- Evaluate ONLY what the candidate actually demonstrated in their answers.\n"
+                    "- Do not assume skills not demonstrated.\n"
+                    "- Do not invent candidate experience.\n"
+                    "- Judge answers in the context of the questions asked.\n"
+                    "- Evaluate the interview as a whole, not each answer independently.\n"
+                    "- Look for consistency across answers.\n"
+                    "- Penalize extremely vague, incomplete, repetitive, or off-topic answers.\n"
+                    "- Reward specific examples, clear reasoning, structured answers, and relevant details.\n"
+                    "- Do not require every answer to contain a measurable metric.\n"
+                    "- Do not penalize lack of professional experience; evaluate the quality of examples provided.\n\n"
+                    "SCORING FACTORS (use internally, do not expose separately):\n"
+                    "- Relevance: Did the candidate answer what was asked?\n"
+                    "- Clarity: Were answers understandable and structured?\n"
+                    "- Specificity: Concrete details and examples?\n"
+                    "- Depth: Reasoning vs shallow answers?\n"
+                    "- Evidence: Claims supported by actual experience?\n"
+                    "- Communication: Clear explanation of ideas?\n"
+                    "- Consistency: Reasonably consistent across the interview?\n\n"
+                    'Return ONLY valid JSON: {"overall_score": int, "strengths": [str, str], '
+                    '"areas_to_improve": [str, str]}\n'
+                    "- overall_score: integer 0-100\n"
+                    "- strengths: 2-4 concise points\n"
+                    "- areas_to_improve: 2-4 concise points\n"
+                    "- Keep each point short (one sentence).\n"
+                    "- Do not return markdown or explanations outside the JSON."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Interview Transcript:\n\n{transcript}",
+            },
+        ]
+        raw = self._chat(messages, max_tokens=1024)
+        return self._parse_json(raw)

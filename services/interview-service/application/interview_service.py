@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 
 from domain.interview import Interview
@@ -8,6 +9,8 @@ from infrastructure.repositories.base import InterviewRepositoryInterface
 from application.llm_service import LLMService
 from application.rag_client import RAGClient
 from application.question_planner import QuestionPlanner, InterviewContext
+
+logger = logging.getLogger(__name__)
 
 
 class InterviewService:
@@ -147,6 +150,17 @@ class InterviewService:
 
         await self._repository.save(interview)
 
+        # Generate analysis after interview completes (non-blocking on failure)
+        if interview.status == InterviewState.COMPLETED and interview.analysis is None:
+            try:
+                from application.analysis_service import AnalysisService
+                analysis_service = AnalysisService(llm=self._llm)
+                interview.analysis = await analysis_service.analyze(interview)
+                await self._repository.save(interview)
+            except Exception as e:
+                logger.error("Analysis failed for interview %s: %s", interview.id, e)
+                interview.analysis = None
+
         is_complete = interview.status == InterviewState.COMPLETED
         q = interview.current_question()
         return {
@@ -157,6 +171,7 @@ class InterviewService:
             "next_question": None if is_complete else (q.text if q else None),
             "next_question_index": interview.current_question_index if not is_complete else None,
             "total_questions": interview.total_questions,
+            "analysis": interview.analysis,
         }
 
     async def get_results(self, interview_id: UUID) -> dict | None:
@@ -179,4 +194,5 @@ class InterviewService:
             "interview_id": str(interview.id),
             "status": interview.status.value,
             "results": results,
+            "analysis": interview.analysis,
         }

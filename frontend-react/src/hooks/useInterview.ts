@@ -6,6 +6,7 @@ import {
   submitAnswer,
   getResults,
   type ResultItem,
+  type Analysis,
 } from "../lib/api";
 
 export type InterviewState =
@@ -29,6 +30,7 @@ export function useInterview() {
   const [interviewId, setInterviewId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
 
   const setupRef = useRef<{ name: string; jobRole: string } | null>(null);
 
@@ -106,8 +108,10 @@ export function useInterview() {
         await tts.speak(data.next_question, DEFAULT_VOICE, DEFAULT_SPEED);
         setState("ready");
       } else {
+        if (data.analysis) setAnalysis(data.analysis);
         const resData = await getResults(interviewId);
         setResults(resData.results);
+        if (resData.analysis) setAnalysis(resData.analysis);
         setState("results");
       }
     } catch (err) {
@@ -124,6 +128,7 @@ export function useInterview() {
     setQuestionIndex(0);
     setTotalQuestions(0);
     setResults([]);
+    setAnalysis(null);
     setupRef.current = null;
   }, []);
 
@@ -133,6 +138,7 @@ export function useInterview() {
     questionIndex,
     totalQuestions,
     results,
+    analysis,
     loading,
     error,
     transcript: stt.transcript,

@@ -15,6 +15,13 @@ export interface AnswerResponse {
   next_question?: string;
   next_question_index?: number;
   total_questions?: number;
+  analysis?: Analysis;
+}
+
+export interface Analysis {
+  overall_score: number;
+  strengths: string[];
+  areas_to_improve: string[];
 }
 
 export interface ResultItem {
@@ -25,6 +32,7 @@ export interface ResultItem {
 
 export interface ResultsResponse {
   results: ResultItem[];
+  analysis?: Analysis;
 }
 
 async function fetchWithRetry(

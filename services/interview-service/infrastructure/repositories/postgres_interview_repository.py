@@ -30,6 +30,7 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                     existing.total_questions = interview.total_questions
                     existing.topics = json.dumps(interview.topics)
                     existing.topics_covered = json.dumps(interview.topics_covered)
+                    existing.analysis = json.dumps(interview.analysis) if interview.analysis else None
 
                     for q in interview.questions:
                         q_exists = await session.get(QuestionModel, q.id)
@@ -74,6 +75,7 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                         total_questions=interview.total_questions,
                         topics=json.dumps(interview.topics),
                         topics_covered=json.dumps(interview.topics_covered),
+                        analysis=json.dumps(interview.analysis) if interview.analysis else None,
                     )
                     session.add(db_interview)
 
@@ -170,4 +172,5 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
             total_questions=db_interview.total_questions,
             topics=json.loads(db_interview.topics),
             topics_covered=json.loads(db_interview.topics_covered),
+            analysis=json.loads(db_interview.analysis) if db_interview.analysis else None,
         )

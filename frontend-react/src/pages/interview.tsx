@@ -14,6 +14,7 @@ export function Interview() {
     questionIndex,
     totalQuestions,
     results,
+    analysis,
     transcript,
     loading,
     error,
@@ -116,7 +117,7 @@ export function Interview() {
                 exit={{ opacity: 0, y: -20 }}
                 className="rounded-3xl bg-neutral-900/50 backdrop-blur-xl border border-neutral-800 p-8"
               >
-                <ResultsPanel results={results} onRestart={restart} />
+                <ResultsPanel results={results} analysis={analysis} onRestart={restart} />
               </motion.div>
             )}
           </AnimatePresence>

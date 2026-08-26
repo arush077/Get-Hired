@@ -28,6 +28,7 @@ class InterviewModel(Base):
     total_questions = Column(Integer, nullable=False, default=10)
     topics = Column(Text, nullable=False, default="[]")
     topics_covered = Column(Text, nullable=False, default="[]")
+    analysis = Column(Text, nullable=True, default=None)
     created_at = Column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
