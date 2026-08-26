@@ -1,6 +1,8 @@
 import { useRef, useCallback } from "react";
 import { fetchTTS } from "../lib/api";
 
+const TTS_TIMEOUT_MS = 15000;
+
 export function useTTS() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const abortRef = useRef(false);
@@ -11,7 +13,7 @@ export function useTTS() {
       voice: string,
       speed: number
     ): Promise<void> => {
-      return new Promise(async (resolve, reject) => {
+      return new Promise(async (resolve) => {
         abortRef.current = false;
 
         // Stop any current audio
@@ -21,12 +23,33 @@ export function useTTS() {
           audioRef.current = null;
         }
 
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+        let resolved = false;
+
+        const safeResolve = () => {
+          if (!resolved) {
+            resolved = true;
+            if (timeoutId) clearTimeout(timeoutId);
+            resolve();
+          }
+        };
+
+        timeoutId = setTimeout(() => {
+          console.warn("[TTS] Timed out after", TTS_TIMEOUT_MS, "ms");
+          if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.src = "";
+            audioRef.current = null;
+          }
+          safeResolve();
+        }, TTS_TIMEOUT_MS);
+
         try {
           console.log("[TTS] START");
           const blob = await fetchTTS(text, voice, speed);
 
           if (abortRef.current) {
-            resolve();
+            safeResolve();
             return;
           }
 
@@ -47,19 +70,20 @@ export function useTTS() {
             console.log("[TTS] END");
             URL.revokeObjectURL(url);
             audioRef.current = null;
-            resolve();
+            safeResolve();
           };
 
           audio.onerror = (e) => {
-            console.error("Audio playback error:", e);
+            console.error("[TTS] Audio playback error:", e);
             URL.revokeObjectURL(url);
             audioRef.current = null;
-            resolve(); // still resolve so interview can continue
+            safeResolve();
           };
 
           await audio.play();
         } catch (err) {
-          reject(err);
+          console.error("[TTS] Fetch error:", err);
+          safeResolve();
         }
       });
     },

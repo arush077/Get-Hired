@@ -6,6 +6,7 @@ interface InterviewPanelProps {
   questionIndex: number;
   totalQuestions: number;
   transcript: string;
+  error: string | null;
   onStartAnswer: () => void;
   onFinishAnswer: () => void;
 }
@@ -16,6 +17,7 @@ export function InterviewPanel({
   questionIndex,
   totalQuestions,
   transcript,
+  error,
   onStartAnswer,
   onFinishAnswer,
 }: InterviewPanelProps) {
@@ -37,6 +39,12 @@ export function InterviewPanel({
       {state === "listening" && transcript && (
         <div className="min-h-[120px] p-4 rounded-xl bg-black/20 border border-white/10 font-mono text-sm text-white/90 leading-relaxed whitespace-pre-wrap">
           {transcript}
+        </div>
+      )}
+
+      {error && (
+        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/25 text-red-300 text-sm">
+          {error}
         </div>
       )}
 

@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 import edge_tts
@@ -20,6 +21,8 @@ app.add_middleware(
 )
 
 SKIP_HEADERS = {"host", "accept-encoding", "content-length", "transfer-encoding"}
+RETRY_DELAYS = [2, 4, 8]
+RETRYABLE_STATUS = {502, 503, 504}
 
 
 def _safe_json(resp: httpx.Response):
@@ -32,6 +35,26 @@ def _safe_json(resp: httpx.Response):
     return resp.text
 
 
+async def _proxy_with_retry(
+    method: str, url: str, headers: dict, body: bytes, timeout: float = 90.0
+) -> httpx.Response:
+    for attempt in range(len(RETRY_DELAYS) + 1):
+        try:
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+                resp = await client.request(
+                    method=method, url=url, headers=headers, content=body if body else None
+                )
+            if resp.status_code in RETRYABLE_STATUS and attempt < len(RETRY_DELAYS):
+                await asyncio.sleep(RETRY_DELAYS[attempt])
+                continue
+            return resp
+        except (httpx.TimeoutException, httpx.ConnectError):
+            if attempt < len(RETRY_DELAYS):
+                await asyncio.sleep(RETRY_DELAYS[attempt])
+                continue
+            raise
+
+
 @app.api_route(
     "/api/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
@@ -41,20 +64,16 @@ async def proxy_api(path: str, request: Request):
     body = await request.body()
     headers = {k: v for k, v in request.headers.items() if k.lower() not in SKIP_HEADERS}
 
-    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-        try:
-            resp = await client.request(
-                method=request.method,
-                url=f"{INTERVIEW_SERVICE_URL}/{path}",
-                headers=headers,
-                content=body if body else None,
-            )
-            return JSONResponse(content=_safe_json(resp), status_code=resp.status_code)
-        except httpx.ConnectError:
-            return JSONResponse(
-                content={"error": "Interview service unavailable"},
-                status_code=503,
-            )
+    try:
+        resp = await _proxy_with_retry(
+            request.method, f"{INTERVIEW_SERVICE_URL}/{path}", headers, body
+        )
+        return JSONResponse(content=_safe_json(resp), status_code=resp.status_code)
+    except (httpx.TimeoutException, httpx.ConnectError):
+        return JSONResponse(
+            content={"error": "Interview service unavailable"},
+            status_code=503,
+        )
 
 
 @app.api_route(
@@ -66,20 +85,16 @@ async def proxy_rag(path: str, request: Request):
     body = await request.body()
     headers = {k: v for k, v in request.headers.items() if k.lower() not in SKIP_HEADERS}
 
-    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-        try:
-            resp = await client.request(
-                method=request.method,
-                url=f"{RAG_SERVICE_URL}/rag/{path}",
-                headers=headers,
-                content=body if body else None,
-            )
-            return JSONResponse(content=_safe_json(resp), status_code=resp.status_code)
-        except httpx.ConnectError:
-            return JSONResponse(
-                content={"error": "RAG service unavailable"},
-                status_code=503,
-            )
+    try:
+        resp = await _proxy_with_retry(
+            request.method, f"{RAG_SERVICE_URL}/rag/{path}", headers, body
+        )
+        return JSONResponse(content=_safe_json(resp), status_code=resp.status_code)
+    except (httpx.TimeoutException, httpx.ConnectError):
+        return JSONResponse(
+            content={"error": "RAG service unavailable"},
+            status_code=503,
+        )
 
 
 @app.post("/tts")

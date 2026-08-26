@@ -1,6 +1,9 @@
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const TTS_BASE = import.meta.env.VITE_TTS_URL || "/tts";
 
+const RETRY_DELAYS = [3000, 6000];
+const RETRYABLE_STATUS = [502, 503, 504];
+
 export interface InterviewStartResponse {
   interview_id: string;
   question: string;
@@ -24,13 +27,40 @@ export interface ResultsResponse {
   results: ResultItem[];
 }
 
+async function fetchWithRetry(
+  url: string,
+  options?: RequestInit
+): Promise<Response> {
+  for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+    const res = await fetch(url, options);
+
+    if (res.status === 429) {
+      const retryAfter = res.headers.get("retry-after");
+      if (retryAfter) {
+        await new Promise((r) => setTimeout(r, parseInt(retryAfter) * 1000));
+        continue;
+      }
+      throw new Error("Rate limited. Please try again later.");
+    }
+
+    if (RETRYABLE_STATUS.includes(res.status) && attempt < RETRY_DELAYS.length) {
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
+      continue;
+    }
+
+    return res;
+  }
+
+  throw new Error("Service temporarily unavailable. Please try again.");
+}
+
 export async function startInterview(
   candidateName: string,
   jobRole: string,
   resumeText: string,
   jdText: string
 ): Promise<InterviewStartResponse> {
-  const res = await fetch(`${API_BASE}/interviews`, {
+  const res = await fetchWithRetry(`${API_BASE}/interviews`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -49,7 +79,7 @@ export async function submitAnswer(
   interviewId: string,
   transcript: string
 ): Promise<AnswerResponse> {
-  const res = await fetch(`${API_BASE}/interviews/${interviewId}/answers`, {
+  const res = await fetchWithRetry(`${API_BASE}/interviews/${interviewId}/answers`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ transcript }),
@@ -61,7 +91,7 @@ export async function submitAnswer(
 export async function getResults(
   interviewId: string
 ): Promise<ResultsResponse> {
-  const res = await fetch(`${API_BASE}/interviews/${interviewId}/results`);
+  const res = await fetchWithRetry(`${API_BASE}/interviews/${interviewId}/results`);
   if (!res.ok) throw new Error("Failed to get results");
   return res.json();
 }

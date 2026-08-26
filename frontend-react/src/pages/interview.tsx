@@ -15,6 +15,8 @@ export function Interview() {
     totalQuestions,
     results,
     transcript,
+    loading,
+    error,
     goToDocuments,
     start,
     startAnswer,
@@ -51,13 +53,27 @@ export function Interview() {
                 exit={{ opacity: 0, y: -20 }}
                 className="rounded-3xl bg-neutral-900/50 backdrop-blur-xl border border-neutral-800 p-8"
               >
-                <h1 className="text-2xl font-bold text-neutral-50 mb-2">
-                  Upload Documents
-                </h1>
-                <p className="text-sm text-neutral-400 mb-6">
-                  Paste your resume and job description for personalized questions
-                </p>
-                <DocumentForm onSubmit={start} />
+                {loading ? (
+                  <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                    <svg className="animate-spin h-8 w-8 text-pink-500" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <p className="text-neutral-300 text-sm">
+                      Connecting to interview services… this may take a few seconds on the first request.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <h1 className="text-2xl font-bold text-neutral-50 mb-2">
+                      Upload Documents
+                    </h1>
+                    <p className="text-sm text-neutral-400 mb-6">
+                      Paste your resume and job description for personalized questions
+                    </p>
+                    <DocumentForm onSubmit={start} />
+                  </>
+                )}
               </motion.div>
             )}
 
@@ -76,6 +92,7 @@ export function Interview() {
                     questionIndex={questionIndex}
                     totalQuestions={totalQuestions}
                     transcript={transcript}
+                    error={error}
                     onStartAnswer={startAnswer}
                     onFinishAnswer={finishAnswer}
                   />

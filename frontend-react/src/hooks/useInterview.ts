@@ -27,6 +27,8 @@ export function useInterview() {
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [results, setResults] = useState<ResultItem[]>([]);
   const [interviewId, setInterviewId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const setupRef = useRef<{ name: string; jobRole: string } | null>(null);
 
@@ -46,14 +48,20 @@ export function useInterview() {
       const setup = setupRef.current;
       if (!setup) return;
 
-      const data = await apiStart(setup.name, setup.jobRole, resumeText, jdText);
-      setInterviewId(data.interview_id);
-      setQuestion(data.question);
-      setQuestionIndex(data.question_index);
-      setTotalQuestions(data.total_questions);
-      setState("speaking");
-      await tts.speak(data.question, DEFAULT_VOICE, DEFAULT_SPEED);
-      setState("ready");
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await apiStart(setup.name, setup.jobRole, resumeText, jdText);
+        setInterviewId(data.interview_id);
+        setQuestion(data.question);
+        setQuestionIndex(data.question_index);
+        setTotalQuestions(data.total_questions);
+        setState("speaking");
+        await tts.speak(data.question, DEFAULT_VOICE, DEFAULT_SPEED);
+        setState("ready");
+      } finally {
+        setLoading(false);
+      }
     },
     [tts]
   );
@@ -69,30 +77,37 @@ export function useInterview() {
 
   const finishAnswer = useCallback(async () => {
     setState("waiting");
+    setError(null);
 
-    await stt.stop();
+    try {
+      await stt.stop();
 
-    console.log("[AUDIO] Waiting 2s before TTS...");
-    await new Promise((r) => setTimeout(r, 2000));
-    console.log("[AUDIO] Starting TTS");
+      console.log("[AUDIO] Waiting 2s before TTS...");
+      await new Promise((r) => setTimeout(r, 2000));
+      console.log("[AUDIO] Starting TTS");
 
-    const transcript = stt.getTranscript();
+      const transcript = stt.getTranscript();
 
-    if (!interviewId) return;
+      if (!interviewId) return;
 
-    const data = await submitAnswer(interviewId, transcript);
+      const data = await submitAnswer(interviewId, transcript);
 
-    if (data.next_question) {
-      setQuestionIndex(data.next_question_index ?? questionIndex + 1);
-      setTotalQuestions(data.total_questions ?? totalQuestions);
-      setQuestion(data.next_question);
-      setState("speaking");
-      await tts.speak(data.next_question, DEFAULT_VOICE, DEFAULT_SPEED);
+      if (data.next_question) {
+        setQuestionIndex(data.next_question_index ?? questionIndex + 1);
+        setTotalQuestions(data.total_questions ?? totalQuestions);
+        setQuestion(data.next_question);
+        setState("speaking");
+        await tts.speak(data.next_question, DEFAULT_VOICE, DEFAULT_SPEED);
+        setState("ready");
+      } else {
+        const resData = await getResults(interviewId);
+        setResults(resData.results);
+        setState("results");
+      }
+    } catch (err) {
+      console.error("[INTERVIEW] finishAnswer error:", err);
+      setError("Something went wrong. Please try again.");
       setState("ready");
-    } else {
-      const resData = await getResults(interviewId);
-      setResults(resData.results);
-      setState("results");
     }
   }, [stt, tts, interviewId, questionIndex, totalQuestions]);
 
@@ -112,6 +127,8 @@ export function useInterview() {
     questionIndex,
     totalQuestions,
     results,
+    loading,
+    error,
     transcript: stt.transcript,
     goToDocuments,
     start,

@@ -8,7 +8,6 @@ import { AnimatedLines } from "./animated-lines";
 
 const stats = [
   { label: "Real-time Feedback", text: "AI Powered" },
-  { label: "Voice Options", value: 9, suffix: "" },
   { label: "Pricing", value: 0, suffix: "$" },
   { label: "Browser-based", text: "Zero Setup" },
 ];
@@ -89,7 +88,7 @@ export function Hero() {
         </div>
 
         <motion.div
-          className="relative z-10 mt-16 grid grid-cols-2 gap-6 sm:mt-20 md:grid-cols-4"
+          className="relative z-10 mt-16 grid grid-cols-2 gap-6 sm:mt-20 md:grid-cols-3"
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, ease: "easeOut" }}
