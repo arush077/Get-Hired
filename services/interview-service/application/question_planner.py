@@ -63,7 +63,7 @@ class PrimaryQuestionStrategy(QuestionStrategy):
     async def generate(
         self, context: InterviewContext, rag: RAGClient, llm: LLMService
     ) -> tuple[str, str]:
-        search_angle = context.topics_remaining[0]
+        search_angle = await self._select_best_topic(context, rag)
 
         chunks = await rag.retrieve_context(
             query=search_angle,
@@ -79,6 +79,35 @@ class PrimaryQuestionStrategy(QuestionStrategy):
         )
 
         return question_text, search_angle
+
+    async def _select_best_topic(
+        self, context: InterviewContext, rag: RAGClient
+    ) -> str:
+        if not context.topics_remaining:
+            return context.job_role
+
+        # Try to find the topic with the most relevant RAG chunks
+        best_topic = context.topics_remaining[0]
+        best_score = 0
+
+        for topic in context.topics_remaining[:5]:  # Check first 5 to limit RAG calls
+            try:
+                chunks = await rag.retrieve_context(
+                    query=topic,
+                    interview_id=context.interview_id,
+                    top_k=1,
+                )
+                # Score based on whether chunks were found and topic specificity
+                score = len(chunks)
+                if len(topic.split()) >= 2:
+                    score += 1  # Prefer multi-word specific topics
+                if score > best_score:
+                    best_score = score
+                    best_topic = topic
+            except Exception:
+                continue
+
+        return best_topic
 
 
 class FollowUpQuestionStrategy(QuestionStrategy):

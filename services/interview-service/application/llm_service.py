@@ -16,6 +16,16 @@ CONCISENESS_INSTRUCTION = (
     "Do not list topics to discuss — ask a single focused question. "
 )
 
+GROUNDING_RULES = (
+    "CRITICAL RULES:\n"
+    "- Use ONLY the Resume/JD context provided below.\n"
+    "- NEVER invent candidate experience, projects, technologies, responsibilities, or achievements.\n"
+    "- If the context mentions a specific project, role, company, or skill, ask about THAT specifically.\n"
+    "- Use concrete names from the resume (project names, company names, tools, certifications).\n"
+    "- If no relevant Resume/JD context is available, ask a general role-based question.\n"
+    "- Every question must be traceable to the provided context.\n"
+)
+
 
 class LLMService:
     def __init__(self):
@@ -112,6 +122,54 @@ class LLMService:
         ]
         return self._generate_with_retry(messages)
 
+    def extract_resume_topics(
+        self, resume_text: str, job_role: str, count: int = 10
+    ) -> list[str]:
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert resume analyst. "
+                    "Extract concrete, specific topics from this resume that can be used "
+                    "as interview question subjects.\n\n"
+                    "Extract the following categories when present:\n"
+                    "- Project names and descriptions\n"
+                    "- Specific skills and technologies\n"
+                    "- Certifications or courses\n"
+                    "- Company names and roles\n"
+                    "- Education details\n"
+                    "- Extracurricular activities, committees, leadership roles\n"
+                    "- Specific achievements or responsibilities\n\n"
+                    f"Return ONLY valid JSON: {{\"topics\": [\"topic1\", \"topic2\", ...]}}\n"
+                    f"Extract exactly {count} topics. Be specific — use actual names from the resume, "
+                    "not generic categories like 'skills' or 'projects'."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Job Role: {job_role}\n\n"
+                    f"Resume:\n{resume_text}"
+                ),
+            },
+        ]
+        raw = self._chat(messages, max_tokens=512)
+        try:
+            data = self._parse_json(raw)
+            topics = data.get("topics", [])
+            if isinstance(topics, list) and len(topics) > 0:
+                return [str(t) for t in topics[:count]]
+        except (ValueError, KeyError):
+            pass
+
+        # Fallback: extract any quoted strings
+        import re
+        matches = re.findall(r'"([^"]{3,80})"', raw)
+        if matches:
+            return matches[:count]
+
+        return [f"{job_role} experience", "technical skills", "projects"]
+
     def generate_primary_question(
         self,
         job_role: str,
@@ -127,10 +185,11 @@ class LLMService:
                 "role": "system",
                 "content": (
                     "You are an expert technical interviewer conducting a personalized interview. "
-                    "Generate ONE fresh interview question based on the candidate's resume/JD context. "
-                    f"This question should explore: {search_angle}. "
-                    f"Topics already covered: {covered_text}. "
-                    "Do NOT repeat topics already covered. "
+                    "Generate ONE interview question grounded in the candidate's actual resume/JD.\n\n"
+                    + GROUNDING_RULES
+                    + f"This question should explore: {search_angle}.\n"
+                    f"Topics already covered: {covered_text}.\n"
+                    "Do NOT repeat topics already covered.\n"
                     + CONCISENESS_INSTRUCTION
                     + 'Return ONLY valid JSON: {"question": "..."}'
                 ),
@@ -140,7 +199,9 @@ class LLMService:
                 "content": (
                     f"Job Role: {job_role}\n\n"
                     f"Relevant Resume/JD Context:\n{chunks_text}\n\n"
-                    f"Generate a fresh question about: {search_angle}"
+                    f"Generate a question about: {search_angle}\n"
+                    "Use specific details from the context above. "
+                    "Do NOT invent experience not mentioned in the context."
                 ),
             },
         ]
@@ -160,8 +221,10 @@ class LLMService:
                 "role": "system",
                 "content": (
                     "You are an expert technical interviewer. "
-                    "Generate ONE insightful follow-up question based on the candidate's previous answer. "
-                    "Dig deeper into their experience, ask for specifics, or explore implications. "
+                    "Generate ONE insightful follow-up question based on the candidate's previous answer.\n\n"
+                    + GROUNDING_RULES
+                    + "Dig deeper into their actual experience. Ask for specifics, examples, or details "
+                    "mentioned in their answer or the Resume/JD context.\n"
                     + CONCISENESS_INSTRUCTION
                     + 'Return ONLY valid JSON: {"question": "..."}'
                 ),
@@ -173,7 +236,7 @@ class LLMService:
                     f"Previous Question: {previous_question}\n"
                     f"Candidate's Answer: {previous_answer}\n\n"
                     f"Relevant Resume/JD Context:\n{chunks_text}\n\n"
-                    "Generate a follow-up question."
+                    "Generate a follow-up question grounded in the above context and answer."
                 ),
             },
         ]
@@ -196,10 +259,12 @@ class LLMService:
                 "role": "system",
                 "content": (
                     "You are an expert technical interviewer. "
-                    "Generate ONE deeper technical or design question on a specific topic. "
-                    f"Topic to explore in depth: {topic}. "
+                    "Generate ONE deeper technical or design question on a specific topic.\n\n"
+                    + GROUNDING_RULES
+                    + f"Topic to explore in depth: {topic}.\n"
                     "This should be a challenging question that tests deep understanding — "
                     "architecture decisions, trade-offs, edge cases, or design patterns. "
+                    "Ground the question in the candidate's actual projects or experience from the context.\n"
                     + CONCISENESS_INSTRUCTION
                     + 'Return ONLY valid JSON: {"question": "..."}'
                 ),
@@ -210,7 +275,8 @@ class LLMService:
                     f"Job Role: {job_role}\n\n"
                     f"Relevant Resume/JD Context:\n{chunks_text}\n\n"
                     f"Interview so far:\n{history_text}\n"
-                    f"Generate a deep-dive question about: {topic}"
+                    f"Generate a deep-dive question about: {topic}\n"
+                    "Use specific details from the Resume/JD context."
                 ),
             },
         ]

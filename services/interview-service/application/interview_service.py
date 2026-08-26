@@ -44,20 +44,13 @@ class InterviewService:
             interview_id=str(interview.id),
         )
 
-        # Derive search angles from job_role for PRIMARY questions
-        topics = [
-            job_role,
-            f"{job_role} experience",
-            "resume skills",
-            "resume projects",
-            "system design",
-            "databases",
-            "architecture",
-            "technical challenges",
-            "code quality",
-            "scalability",
-        ]
-        interview.topics = topics[:total_questions]
+        # Extract concrete topics from the actual resume
+        topics = self._llm.extract_resume_topics(
+            resume_text=resume_text,
+            job_role=job_role,
+            count=total_questions,
+        )
+        interview.topics = topics
 
         # Generate first question (HR intro)
         context = InterviewContext(
