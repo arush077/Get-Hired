@@ -15,6 +15,7 @@ export interface AnswerResponse {
   next_question?: string;
   next_question_index?: number;
   total_questions?: number;
+  is_clarification?: boolean;
   analysis?: Analysis;
 }
 
@@ -99,7 +100,14 @@ export async function submitAnswer(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ transcript }),
   });
-  if (!res.ok) throw new Error("Failed to submit answer");
+  if (!res.ok) {
+    let detail = "Failed to submit answer";
+    try {
+      const body = await res.json();
+      if (body.detail) detail = body.detail;
+    } catch {}
+    throw new Error(detail);
+  }
   return res.json();
 }
 
@@ -107,7 +115,14 @@ export async function getResults(
   interviewId: string
 ): Promise<ResultsResponse> {
   const res = await fetchWithRetry(`${API_BASE}/interviews/${interviewId}/results`);
-  if (!res.ok) throw new Error("Failed to get results");
+  if (!res.ok) {
+    let detail = "Failed to get results";
+    try {
+      const body = await res.json();
+      if (body.detail) detail = body.detail;
+    } catch {}
+    throw new Error(detail);
+  }
   return res.json();
 }
 

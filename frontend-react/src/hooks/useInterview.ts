@@ -100,7 +100,12 @@ export function useInterview() {
 
       const data = await submitAnswer(interviewId, transcript);
 
-      if (data.next_question) {
+      if (data.is_clarification) {
+        setQuestion(data.next_question ?? question);
+        setState("speaking");
+        await tts.speak(data.next_question ?? question, DEFAULT_VOICE, DEFAULT_SPEED);
+        setState("ready");
+      } else if (data.next_question) {
         setQuestionIndex(data.next_question_index ?? questionIndex + 1);
         setTotalQuestions(data.total_questions ?? totalQuestions);
         setQuestion(data.next_question);
@@ -116,7 +121,8 @@ export function useInterview() {
       }
     } catch (err) {
       console.error("[INTERVIEW] finishAnswer error:", err);
-      setError("Something went wrong. Please try again.");
+      const message = err instanceof Error ? err.message : "Something went wrong. Please try again.";
+      setError(message);
       setState("ready");
     }
   }, [stt, tts, interviewId, questionIndex, totalQuestions]);
