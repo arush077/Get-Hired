@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class StartInterviewRequest(BaseModel):
@@ -25,6 +25,13 @@ class AnalysisResult(BaseModel):
     strengths: list[str]
     areas_to_improve: list[str]
 
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_score(cls, data):
+        if isinstance(data, dict) and isinstance(data.get("overall_score"), float):
+            data["overall_score"] = round(data["overall_score"])
+        return data
+
 
 class AnswerResponse(BaseModel):
     interview_id: str
@@ -34,6 +41,7 @@ class AnswerResponse(BaseModel):
     next_question: str | None = None
     next_question_index: int | None = None
     total_questions: int | None = None
+    is_clarification: bool = False
     analysis: AnalysisResult | None = None
 
 
