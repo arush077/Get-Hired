@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from domain.answer import Answer
+from domain.answer import Answer, AnswerStatus
 from domain.interview import Interview
 from domain.question import Question, QuestionType
 from infrastructure.db.models import AnswerModel, InterviewModel, QuestionModel
@@ -30,6 +30,8 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                     existing.total_questions = interview.total_questions
                     existing.topics = json.dumps(interview.topics)
                     existing.topics_covered = json.dumps(interview.topics_covered)
+                    existing.topic_status = json.dumps(interview.topic_status)
+                    existing.questions_per_topic = json.dumps(interview.questions_per_topic)
                     existing.analysis = json.dumps(interview.analysis) if interview.analysis else None
 
                     for q in interview.questions:
@@ -57,12 +59,14 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                             a_row = a_exists.scalar_one_or_none()
                             if a_row:
                                 a_row.transcript = a.transcript
+                                a_row.answer_status = a.answer_status.value if a.answer_status else None
                             else:
                                 session.add(
                                     AnswerModel(
                                         interview_id=interview.id,
                                         question_id=q_id,
                                         transcript=a.transcript,
+                                        answer_status=a.answer_status.value if a.answer_status else None,
                                     )
                                 )
                 else:
@@ -75,6 +79,8 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                         total_questions=interview.total_questions,
                         topics=json.dumps(interview.topics),
                         topics_covered=json.dumps(interview.topics_covered),
+                        topic_status=json.dumps(interview.topic_status),
+                        questions_per_topic=json.dumps(interview.questions_per_topic),
                         analysis=json.dumps(interview.analysis) if interview.analysis else None,
                     )
                     session.add(db_interview)
@@ -97,6 +103,7 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                                     interview_id=interview.id,
                                     question_id=interview.questions[idx].id,
                                     transcript=a.transcript,
+                                    answer_status=a.answer_status.value if a.answer_status else None,
                                 )
                             )
 
@@ -159,6 +166,7 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                 answers_dict[idx] = Answer(
                     question_id=a.question_id,
                     transcript=a.transcript,
+                    answer_status=AnswerStatus(a.answer_status) if a.answer_status else None,
                 )
 
         return Interview(
@@ -172,5 +180,7 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
             total_questions=db_interview.total_questions,
             topics=json.loads(db_interview.topics),
             topics_covered=json.loads(db_interview.topics_covered),
+            topic_status=json.loads(db_interview.topic_status),
+            questions_per_topic=json.loads(db_interview.questions_per_topic),
             analysis=json.loads(db_interview.analysis) if db_interview.analysis else None,
         )

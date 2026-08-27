@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from domain.question import QuestionType
 from application.llm_service import LLMService
 from application.rag_client import RAGClient
+
+MAX_QUESTIONS_PER_TOPIC = 2
 
 
 @dataclass
@@ -18,20 +20,13 @@ class InterviewContext:
     topics_covered: list[str]
     current_question_type: QuestionType | None
     follow_up_depth: int
-
-
-DEFAULT_DISTRIBUTION = [
-    QuestionType.HR,           # Q1 - introduction
-    QuestionType.HR,           # Q2 - motivation
-    QuestionType.PRIMARY,      # Q3
-    QuestionType.PRIMARY,      # Q4
-    QuestionType.FOLLOW_UP,    # Q5
-    QuestionType.PRIMARY,      # Q6
-    QuestionType.DEEP_DIVE,    # Q7
-    QuestionType.PRIMARY,      # Q8
-    QuestionType.FOLLOW_UP,    # Q9
-    QuestionType.PRIMARY,      # Q10
-]
+    # Adaptive fields
+    last_answer_status: str | None = None
+    topic_status: dict[str, str] = field(default_factory=dict)
+    questions_per_topic: dict[str, int] = field(default_factory=dict)
+    last_answer: str = ""
+    current_topic: str = ""
+    next_action: str | None = None
 
 
 class QuestionStrategy(ABC):
@@ -86,21 +81,19 @@ class PrimaryQuestionStrategy(QuestionStrategy):
         if not context.topics_remaining:
             return context.job_role
 
-        # Try to find the topic with the most relevant RAG chunks
         best_topic = context.topics_remaining[0]
         best_score = 0
 
-        for topic in context.topics_remaining[:5]:  # Check first 5 to limit RAG calls
+        for topic in context.topics_remaining[:5]:
             try:
                 chunks = await rag.retrieve_context(
                     query=topic,
                     interview_id=context.interview_id,
                     top_k=1,
                 )
-                # Score based on whether chunks were found and topic specificity
                 score = len(chunks)
                 if len(topic.split()) >= 2:
-                    score += 1  # Prefer multi-word specific topics
+                    score += 1
                 if score > best_score:
                     best_score = score
                     best_topic = topic
@@ -134,72 +127,72 @@ class FollowUpQuestionStrategy(QuestionStrategy):
         return question_text, ""
 
 
-class DeepDiveQuestionStrategy(QuestionStrategy):
-    async def generate(
-        self, context: InterviewContext, rag: RAGClient, llm: LLMService
-    ) -> tuple[str, str]:
-        topic = context.topics_covered[-1] if context.topics_covered else context.job_role
-
-        chunks = await rag.retrieve_context(
-            query=topic,
-            interview_id=context.interview_id,
-            top_k=3,
-        )
-
-        question_text = llm.generate_deep_dive_question(
-            job_role=context.job_role,
-            topic=topic,
-            context_chunks=chunks,
-            interview_history=context.previous_qa,
-        )
-
-        return question_text, ""
-
-
 class QuestionPlanner:
     def __init__(
         self,
         rag: RAGClient,
         llm: LLMService,
-        distribution: list[QuestionType] | None = None,
     ):
         self._rag = rag
         self._llm = llm
-        self._distribution = distribution or DEFAULT_DISTRIBUTION
         self._strategies: dict[QuestionType, QuestionStrategy] = {
             QuestionType.HR: HRQuestionStrategy(),
             QuestionType.PRIMARY: PrimaryQuestionStrategy(),
             QuestionType.FOLLOW_UP: FollowUpQuestionStrategy(),
-            QuestionType.DEEP_DIVE: DeepDiveQuestionStrategy(),
         }
+
+    def _get_exhausted_topics(self, context: InterviewContext) -> set[str]:
+        return {
+            topic for topic, status in context.topic_status.items()
+            if status == "EXHAUSTED"
+        }
+
+    def _pick_new_topic(self, context: InterviewContext) -> str:
+        exhausted = self._get_exhausted_topics(context)
+        available = [
+            t for t in context.topics_remaining
+            if t not in exhausted
+        ]
+        if available:
+            return available[0]
+        if context.topics_remaining:
+            return context.topics_remaining[0]
+        return context.job_role
 
     def _select_type(self, context: InterviewContext) -> QuestionType:
         idx = context.questions_asked
-        planned = self._distribution[idx] if idx < len(self._distribution) else QuestionType.PRIMARY
 
-        # HR questions are always asked as planned — no overrides
-        if planned == QuestionType.HR:
+        # First 2 questions are always HR (introductory + motivational)
+        if idx < 2:
             return QuestionType.HR
 
-        if context.follow_up_depth >= 2:
-            if context.topics_remaining:
-                return QuestionType.PRIMARY
-            return QuestionType.DEEP_DIVE
+        # After that, use adaptive logic based on next_action
+        next_action = context.next_action
 
-        if context.current_question_type == QuestionType.FOLLOW_UP and planned == QuestionType.FOLLOW_UP:
-            if context.topics_remaining:
-                return QuestionType.PRIMARY
-            return QuestionType.DEEP_DIVE
+        if next_action == "FOLLOW_UP":
+            questions_on_topic = context.questions_per_topic.get(context.current_topic, 0)
+            if questions_on_topic < MAX_QUESTIONS_PER_TOPIC:
+                return QuestionType.FOLLOW_UP
 
-        if not context.topics_remaining and planned == QuestionType.PRIMARY:
-            return QuestionType.DEEP_DIVE
-
-        return planned
+        # Default: new topic
+        return QuestionType.PRIMARY
 
     async def generate_next_question(
         self, context: InterviewContext
     ) -> tuple[str, QuestionType, str]:
         q_type = self._select_type(context)
-        strategy = self._strategies[q_type]
+
+        if q_type == QuestionType.HR:
+            strategy = self._strategies[QuestionType.HR]
+            question_text, topic_label = await strategy.generate(context, self._rag, self._llm)
+            return question_text, q_type, topic_label
+
+        if q_type == QuestionType.FOLLOW_UP:
+            strategy = self._strategies[QuestionType.FOLLOW_UP]
+            question_text, topic_label = await strategy.generate(context, self._rag, self._llm)
+            return question_text, q_type, context.current_topic
+
+        # PRIMARY — new topic
+        strategy = self._strategies[QuestionType.PRIMARY]
         question_text, topic_label = await strategy.generate(context, self._rag, self._llm)
         return question_text, q_type, topic_label

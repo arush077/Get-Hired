@@ -1,9 +1,16 @@
 from dataclasses import dataclass, field
+from enum import Enum
 from uuid import UUID, uuid4
 
 from domain.question import Question
 from domain.answer import Answer
 from domain.interview_state import InterviewState
+
+
+class TopicStatus(Enum):
+    NEW = "NEW"
+    ACTIVE = "ACTIVE"
+    EXHAUSTED = "EXHAUSTED"
 
 
 @dataclass
@@ -18,6 +25,8 @@ class Interview:
     total_questions: int = 10
     topics: list[str] = field(default_factory=list)
     topics_covered: list[str] = field(default_factory=list)
+    topic_status: dict[str, str] = field(default_factory=dict)
+    questions_per_topic: dict[str, int] = field(default_factory=dict)
     analysis: dict | None = None
 
     @property

@@ -29,6 +29,47 @@ GROUNDING_RULES = (
     "- Every question must be traceable to the provided context.\n"
 )
 
+DOES_NOT_KNOW_PATTERNS = [
+    "i don't know",
+    "i'm not sure",
+    "i have no idea",
+    "i haven't worked on that",
+    "i don't have experience",
+    "i've never done that",
+    "no experience",
+    "not familiar with",
+    "i haven't done that",
+    "i haven't used that",
+    "i haven't worked with that",
+    "i don't think i have",
+    "not really",
+    "no i haven't",
+    "never done that",
+    "don't have that experience",
+    "haven't really",
+    "no major",
+    "i have not",
+    "i did not",
+]
+
+CLARIFICATION_PATTERNS = [
+    "can you repeat",
+    "could you explain",
+    "what do you mean",
+    "i didn't understand",
+    "can you clarify",
+    "could you rephrase",
+    "what does that mean",
+    "i'm not sure what you mean",
+    "what do you mean by",
+    "can you say that again",
+    "could you elaborate",
+    "i don't understand the question",
+    "what exactly do you mean",
+    "can you give an example",
+    "what are you asking",
+]
+
 
 class LLMService:
     def __init__(self):
@@ -336,3 +377,117 @@ class LLMService:
         ]
         raw = self._chat(messages, max_tokens=1024)
         return self._parse_json(raw)
+
+    def classify_answer_rule_based(self, transcript: str) -> str | None:
+        """Fast rule-based classification for obvious cases.
+
+        Returns 'DOES_NOT_KNOW', 'NEEDS_CLARIFICATION', or None if not obvious.
+        """
+        lower = transcript.lower().strip()
+
+        for pattern in CLARIFICATION_PATTERNS:
+            if pattern in lower:
+                return "NEEDS_CLARIFICATION"
+
+        for pattern in DOES_NOT_KNOW_PATTERNS:
+            if pattern in lower:
+                return "DOES_NOT_KNOW"
+
+        return None
+
+    def classify_and_plan_next(
+        self,
+        job_role: str,
+        current_question: str,
+        candidate_answer: str,
+        current_topic: str,
+        questions_on_topic: int,
+        recent_topics: list[str],
+        topics_remaining: list[str],
+        context_chunks: list[str],
+        interview_history: list[dict],
+    ) -> dict:
+        """Classify the candidate's answer and decide the next action.
+
+        Returns:
+            {
+                "answer_status": "ANSWERED" | "PARTIAL_ANSWER" | "DOES_NOT_KNOW" | "NEEDS_CLARIFICATION",
+                "next_action": "FOLLOW_UP" | "NEW_TOPIC" | "CLARIFY",
+                "reason": "...",
+                "clarification": "..." (only when next_action=CLARIFY)
+            }
+        """
+        chunks_text = "\n".join(f"- {c}" for c in context_chunks) if context_chunks else "No context available"
+        covered_text = ", ".join(recent_topics) if recent_topics else "none yet"
+        remaining_text = ", ".join(topics_remaining[:5]) if topics_remaining else "none remaining"
+        history_text = ""
+        for i, qa in enumerate(interview_history[-3:]):
+            history_text += f"Q{i+1}: {qa['question']}\nA{i+1}: {qa['answer']}\n\n"
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert interview analyst. Analyze the candidate's answer and decide what to do next.\n\n"
+                    "STEP 1: Classify the answer status:\n"
+                    "- ANSWERED: Candidate provided a meaningful answer with some substance\n"
+                    "- PARTIAL_ANSWER: Candidate started answering but it's incomplete or lacks detail\n"
+                    "- DOES_NOT_KNOW: Candidate explicitly says they don't know, have no experience, or haven't done this\n"
+                    "- NEEDS_CLARIFICATION: Candidate is asking what the question means or asking for clarification\n\n"
+                    "STEP 2: Decide the next action:\n"
+                    "- CLARIFY: Candidate didn't understand the question. Rephrase the SAME question more clearly.\n"
+                    "- FOLLOW_UP: Answer is incomplete or interesting — ask a deeper follow-up on the SAME topic.\n"
+                    "- NEW_TOPIC: Answer is complete, topic is exhausted, or candidate doesn't know. Move to a DIFFERENT topic.\n\n"
+                    "RULES:\n"
+                    "- If answer_status is DOES_NOT_KNOW, next_action MUST be NEW_TOPIC.\n"
+                    "- If answer_status is NEEDS_CLARIFICATION, next_action MUST be CLARIFY.\n"
+                    "- If questions_on_topic >= 2, next_action MUST be NEW_TOPIC (hard cap).\n"
+                    "- Prefer topic diversity. Don't stay on the same topic unless the follow-up is truly valuable.\n"
+                    "- When choosing NEW_TOPIC, prefer resume-specific topics over generic ones.\n\n"
+                    f"Current topic: {current_topic}\n"
+                    f"Questions already asked on this topic: {questions_on_topic}\n"
+                    f"Topics already discussed: {covered_text}\n"
+                    f"Topics available: {remaining_text}\n\n"
+                    'Return ONLY valid JSON: {"answer_status": "...", "next_action": "...", "reason": "...", "clarification": null}\n'
+                    "- clarification should only be a string when next_action is CLARIFY, otherwise null.\n"
+                    "- reason is for internal debugging only, keep it short (one sentence)."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Job Role: {job_role}\n\n"
+                    f"Current Question: {current_question}\n"
+                    f"Candidate Answer: {candidate_answer}\n\n"
+                    f"Resume/JD Context:\n{chunks_text}\n\n"
+                    f"Recent Interview History:\n{history_text}"
+                ),
+            },
+        ]
+
+        raw = self._chat(messages, max_tokens=512)
+        try:
+            data = self._parse_json(raw)
+            answer_status = data.get("answer_status", "ANSWERED")
+            next_action = data.get("next_action", "NEW_TOPIC")
+            clarification = data.get("clarification")
+
+            if answer_status not in ("ANSWERED", "PARTIAL_ANSWER", "DOES_NOT_KNOW", "NEEDS_CLARIFICATION"):
+                answer_status = "ANSWERED"
+            if next_action not in ("FOLLOW_UP", "NEW_TOPIC", "CLARIFY"):
+                next_action = "NEW_TOPIC"
+
+            return {
+                "answer_status": answer_status,
+                "next_action": next_action,
+                "reason": data.get("reason", ""),
+                "clarification": clarification if next_action == "CLARIFY" else None,
+            }
+        except (ValueError, KeyError) as e:
+            logger.warning("[LLM] classify_and_plan_next parse failed: %s | raw: %r", e, raw[:200])
+            return {
+                "answer_status": "ANSWERED",
+                "next_action": "NEW_TOPIC",
+                "reason": f"Parse failed: {e}",
+                "clarification": None,
+            }

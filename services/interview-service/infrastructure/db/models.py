@@ -28,6 +28,8 @@ class InterviewModel(Base):
     total_questions = Column(Integer, nullable=False, default=10)
     topics = Column(Text, nullable=False, default="[]")
     topics_covered = Column(Text, nullable=False, default="[]")
+    topic_status = Column(Text, nullable=False, default="{}")
+    questions_per_topic = Column(Text, nullable=False, default="{}")
     analysis = Column(Text, nullable=True, default=None)
     created_at = Column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
@@ -69,6 +71,7 @@ class AnswerModel(Base):
         UUID(as_uuid=True), ForeignKey("questions.id", ondelete="CASCADE"), nullable=False
     )
     transcript = Column(Text, nullable=False, default="")
+    answer_status = Column(String(20), nullable=True)
     created_at = Column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
