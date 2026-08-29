@@ -19,10 +19,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('interviews', sa.Column('total_questions', sa.Integer(), nullable=False, server_default='10'))
-    op.add_column('interviews', sa.Column('topics', sa.Text(), nullable=False, server_default='[]'))
-    op.add_column('interviews', sa.Column('topics_covered', sa.Text(), nullable=False, server_default='[]'))
-    op.add_column('questions', sa.Column('question_type', sa.String(length=20), nullable=False, server_default='PRIMARY'))
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    existing_columns = {col['name'] for col in inspector.get_columns('interviews')}
+    question_columns = {col['name'] for col in inspector.get_columns('questions')}
+
+    if 'total_questions' not in existing_columns:
+        op.add_column('interviews', sa.Column('total_questions', sa.Integer(), nullable=False, server_default='10'))
+    if 'topics' not in existing_columns:
+        op.add_column('interviews', sa.Column('topics', sa.Text(), nullable=False, server_default='[]'))
+    if 'topics_covered' not in existing_columns:
+        op.add_column('interviews', sa.Column('topics_covered', sa.Text(), nullable=False, server_default='[]'))
+    if 'question_type' not in question_columns:
+        op.add_column('questions', sa.Column('question_type', sa.String(length=20), nullable=False, server_default='PRIMARY'))
 
 
 def downgrade() -> None:

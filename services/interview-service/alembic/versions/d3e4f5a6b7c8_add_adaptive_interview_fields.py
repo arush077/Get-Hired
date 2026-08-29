@@ -19,9 +19,17 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('answers', sa.Column('answer_status', sa.String(20), nullable=True))
-    op.add_column('interviews', sa.Column('topic_status', sa.Text(), nullable=False, server_default='{}'))
-    op.add_column('interviews', sa.Column('questions_per_topic', sa.Text(), nullable=False, server_default='{}'))
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    interview_columns = {col['name'] for col in inspector.get_columns('interviews')}
+    answer_columns = {col['name'] for col in inspector.get_columns('answers')}
+
+    if 'answer_status' not in answer_columns:
+        op.add_column('answers', sa.Column('answer_status', sa.String(20), nullable=True))
+    if 'topic_status' not in interview_columns:
+        op.add_column('interviews', sa.Column('topic_status', sa.Text(), nullable=False, server_default='{}'))
+    if 'questions_per_topic' not in interview_columns:
+        op.add_column('interviews', sa.Column('questions_per_topic', sa.Text(), nullable=False, server_default='{}'))
 
 
 def downgrade() -> None:
