@@ -1,5 +1,7 @@
 import asyncio
+import logging
 import os
+from contextlib import asynccontextmanager
 
 import edge_tts
 import httpx
@@ -7,10 +9,35 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
-app = FastAPI(title="API Gateway", version="0.1.0")
+logger = logging.getLogger(__name__)
 
 INTERVIEW_SERVICE_URL = os.getenv("INTERVIEW_SERVICE_URL", "http://localhost:8001")
 RAG_SERVICE_URL = os.getenv("RAG_SERVICE_URL", "http://localhost:8004")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async def _warm_service(name: str, url: str):
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get(f"{url}/health")
+                    if resp.status_code == 200:
+                        logger.info("[WARM-UP] %s is up", name)
+                        return
+                    logger.warning("[WARM-UP] %s returned %d", name, resp.status_code)
+            except (httpx.TimeoutException, httpx.ConnectError):
+                logger.warning("[WARM-UP] %s not ready (attempt %d)", name, attempt + 1)
+            await asyncio.sleep(2)
+
+    await asyncio.gather(
+        _warm_service("Interview Service", INTERVIEW_SERVICE_URL),
+        _warm_service("RAG Service", RAG_SERVICE_URL),
+    )
+    yield
+
+
+app = FastAPI(title="API Gateway", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
