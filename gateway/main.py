@@ -152,7 +152,7 @@ async def tts(request: Request):
     return Response(content=audio_data, media_type="audio/mpeg")
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health():
     return {"status": "ok", "service": "gateway"}
 

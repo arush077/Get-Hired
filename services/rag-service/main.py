@@ -36,7 +36,7 @@ app.include_router(ingestion_router)
 app.include_router(retrieval_router)
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     return {"status": "healthy", "service": "rag-service"}
 
