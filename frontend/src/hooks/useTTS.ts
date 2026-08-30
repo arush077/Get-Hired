@@ -1,11 +1,12 @@
 import { useRef, useCallback } from "react";
 import { fetchTTS } from "../lib/api";
 
-const TTS_TIMEOUT_MS = 15000;
+const TTS_REQUEST_TIMEOUT_MS = 30000;
 
 export function useTTS() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const abortRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const speak = useCallback(
     (
@@ -22,36 +23,52 @@ export function useTTS() {
           audioRef.current.src = "";
           audioRef.current = null;
         }
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+          abortControllerRef.current = null;
+        }
 
-        let timeoutId: ReturnType<typeof setTimeout> | null = null;
+        let requestTimeoutId: ReturnType<typeof setTimeout> | null = null;
         let resolved = false;
 
         const safeResolve = () => {
           if (!resolved) {
             resolved = true;
-            if (timeoutId) clearTimeout(timeoutId);
+            if (requestTimeoutId) clearTimeout(requestTimeoutId);
             resolve();
           }
         };
 
-        timeoutId = setTimeout(() => {
-          console.warn("[TTS] Timed out after", TTS_TIMEOUT_MS, "ms");
-          if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.src = "";
-            audioRef.current = null;
-          }
-          safeResolve();
-        }, TTS_TIMEOUT_MS);
+        const requestStart = performance.now();
 
         try {
-          const blob = await fetchTTS(text, voice, speed);
+          // Request timeout: only covers the HTTP fetch, not playback
+          const controller = new AbortController();
+          abortControllerRef.current = controller;
+
+          const fetchPromise = fetchTTS(text, voice, speed, controller.signal);
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            requestTimeoutId = setTimeout(() => {
+              controller.abort();
+              reject(new Error(`TTS request timed out after ${TTS_REQUEST_TIMEOUT_MS}ms`));
+            }, TTS_REQUEST_TIMEOUT_MS);
+          });
+
+          const blob = await Promise.race([fetchPromise, timeoutPromise]);
+
+          // Request succeeded — clear the request timeout
+          if (requestTimeoutId) clearTimeout(requestTimeoutId);
+          requestTimeoutId = null;
+
+          const requestDuration = performance.now() - requestStart;
+          console.log("[TTS] Request completed in", Math.round(requestDuration), "ms,", blob.size, "bytes");
 
           if (abortRef.current) {
             safeResolve();
             return;
           }
 
+          // Create audio element and play — no timeout on playback
           const url = URL.createObjectURL(blob);
           const audio = new Audio();
           audioRef.current = audio;
@@ -59,7 +76,11 @@ export function useTTS() {
           audio.preload = "auto";
           audio.src = url;
 
+          const playStart = performance.now();
+
           audio.onended = () => {
+            const playbackDuration = performance.now() - playStart;
+            console.log("[TTS] Playback ended after", Math.round(playbackDuration), "ms");
             URL.revokeObjectURL(url);
             audioRef.current = null;
             safeResolve();
@@ -74,7 +95,8 @@ export function useTTS() {
 
           await audio.play();
         } catch (err) {
-          console.error("[TTS] Fetch error:", err);
+          console.error("[TTS] Error:", err);
+          if (requestTimeoutId) clearTimeout(requestTimeoutId);
           safeResolve();
         }
       });
@@ -84,6 +106,10 @@ export function useTTS() {
 
   const stop = useCallback(() => {
     abortRef.current = true;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = "";

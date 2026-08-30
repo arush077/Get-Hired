@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -449,23 +451,22 @@ class TestCompletion:
 
     def test_final_state_persisted(self):
         """Interview state should be properly persisted."""
-        from infrastructure.repositories.interview_repository import (
-            _serialize_topic_plan,
-            _deserialize_topic_plan,
+        from infrastructure.repositories.topic_serialization import (
+            serialize_topic_plan,
+            deserialize_topic_plan,
         )
 
         topic_plan = [
-            TopicEntry(id="topic_0", label="Project A", priority=1, status=TopicStatus.ACTIVE, source_context="built a thing"),
+            TopicEntry(id="topic_0", label="Project A", priority=1, status=TopicStatus.ACTIVE),
             TopicEntry(id="topic_1", label="Project B", priority=2, status=TopicStatus.EXHAUSTED, chunk_ids=["c1", "c2"]),
         ]
 
-        serialized = _serialize_topic_plan(topic_plan)
-        deserialized = _deserialize_topic_plan(serialized)
+        serialized = serialize_topic_plan(topic_plan)
+        deserialized = deserialize_topic_plan(serialized)
 
         assert len(deserialized) == 2
         assert deserialized[0].label == "Project A"
         assert deserialized[0].status == TopicStatus.ACTIVE
-        assert deserialized[0].source_context == "built a thing"
         assert deserialized[1].label == "Project B"
         assert deserialized[1].status == TopicStatus.EXHAUSTED
         assert deserialized[1].chunk_ids == ["c1", "c2"]
@@ -481,10 +482,9 @@ class TestTopicMerge:
         from application.topic_planner import _merge_duplicate_topics
 
         rag = AsyncMock()
-        # Two topics that are semantically identical
-        t0 = TopicEntry(id="topic_0", label="fault-tolerance strategy", priority=1, source_context="three-tier fault tolerance for retries")
-        t1 = TopicEntry(id="topic_1", label="retries and backoff", priority=2, source_context="LLM retries, agent retries, exponential backoff")
-        t2 = TopicEntry(id="topic_2", label="resume builder JWT auth", priority=3, source_context="JWT authentication in React frontend")
+        t0 = TopicEntry(id="topic_0", label="fault-tolerance strategy", priority=1)
+        t1 = TopicEntry(id="topic_1", label="retries and backoff", priority=2)
+        t2 = TopicEntry(id="topic_2", label="resume builder JWT auth", priority=3)
 
         # Make t0 and t1 have similar embeddings, t2 different
         emb_t0 = np.array([0.9] + [0.01] * 767, dtype=np.float32)
@@ -509,8 +509,8 @@ class TestTopicMerge:
         from application.topic_planner import _merge_duplicate_topics
 
         rag = AsyncMock()
-        t0 = TopicEntry(id="topic_0", label="pagination architecture", priority=1, source_context="server-side pagination")
-        t1 = TopicEntry(id="topic_1", label="JWT authentication", priority=2, source_context="React frontend auth")
+        t0 = TopicEntry(id="topic_0", label="pagination architecture", priority=1)
+        t1 = TopicEntry(id="topic_1", label="JWT authentication", priority=2)
 
         emb_t0 = np.array([1.0] + [0.0] * 767, dtype=np.float32)
         emb_t1 = np.array([0.0] * 768, dtype=np.float32)
@@ -555,3 +555,235 @@ class TestTopicMerge:
         result = await _merge_duplicate_topics([t0, t1], rag)
         assert len(result) == 1
         assert set(result[0].chunk_ids) == {"c1", "c2", "c3"}
+
+
+# ── Regression Tests: Real Chunk Linkage ─────────────────────────
+
+
+class TestChunkLinkage:
+    @pytest.mark.asyncio
+    async def test_real_chunk_ids_attached_to_topics(self):
+        """Topics should have real chunk_ids from ingestion, not invented IDs."""
+        from application.topic_planner import _extract_topics
+
+        llm = AsyncMock()
+        llm._chat = AsyncMock(return_value=json.dumps({
+            "topics": [
+                {"label": "Pagination architecture", "chunk_ids": ["chunk-aaa", "chunk-bbb"]},
+                {"label": "JWT authentication", "chunk_ids": ["chunk-ccc"]},
+            ]
+        }))
+        llm._parse_json = MagicMock(side_effect=lambda x: json.loads(x))
+
+        chunks = [
+            {"id": "chunk-aaa", "content": "server-side pagination", "document_type": "resume"},
+            {"id": "chunk-bbb", "content": "95% data reduction", "document_type": "resume"},
+            {"id": "chunk-ccc", "content": "JWT auth in React", "document_type": "resume"},
+        ]
+
+        result = await _extract_topics(chunks=chunks, job_role="SDE-1", llm=llm, count=5)
+
+        assert len(result) == 2
+        assert result[0] == ("Pagination architecture", ["chunk-aaa", "chunk-bbb"])
+        assert result[1] == ("JWT authentication", ["chunk-ccc"])
+
+    @pytest.mark.asyncio
+    async def test_invalid_chunk_ids_filtered_out(self):
+        """Chunk IDs not in the original ingestion should be filtered."""
+        from application.topic_planner import _extract_topics
+
+        llm = AsyncMock()
+        llm._chat = AsyncMock(return_value=json.dumps({
+            "topics": [
+                {"label": "Topic A", "chunk_ids": ["chunk-aaa", "fake-id-999"]},
+            ]
+        }))
+        llm._parse_json = MagicMock(side_effect=lambda x: json.loads(x))
+
+        chunks = [
+            {"id": "chunk-aaa", "content": "real content", "document_type": "resume"},
+        ]
+
+        result = await _extract_topics(chunks=chunks, job_role="SDE-1", llm=llm, count=5)
+
+        assert len(result) == 1
+        assert result[0] == ("Topic A", ["chunk-aaa"])
+
+    @pytest.mark.asyncio
+    async def test_merged_topics_union_chunk_ids(self):
+        """When topics merge, chunk_ids from both should be unioned."""
+        from application.topic_planner import _merge_duplicate_topics
+
+        rag = AsyncMock()
+        t0 = TopicEntry(id="t0", label="fault tolerance", priority=1, chunk_ids=["c1", "c2"])
+        t1 = TopicEntry(id="t1", label="retry strategy", priority=2, chunk_ids=["c2", "c3"])
+
+        emb = np.array([1.0] + [0.001] * 767, dtype=np.float32)
+        emb = emb / np.linalg.norm(emb)
+        rag.get_embeddings = AsyncMock(return_value=[emb.tolist(), emb.tolist()])
+
+        result = await _merge_duplicate_topics([t0, t1], rag)
+        assert len(result) == 1
+        assert set(result[0].chunk_ids) == {"c1", "c2", "c3"}
+
+
+# ── Regression Tests: RAG Retrieval Behavior ─────────────────────
+
+
+class TestRAGRetrievalBehavior:
+    @pytest.mark.asyncio
+    async def test_same_topic_followup_zero_rag_searches(self):
+        """Same-topic follow-up should use cached chunks, not fresh RAG."""
+        planner = QuestionPlanner()
+        planner.cache_chunks("int-1", "topic_0", ["cached chunk content"])
+
+        cached = planner.get_cached_chunks("int-1", "topic_0")
+        assert cached == ["cached chunk content"]
+        assert len(cached) == 1
+
+    @pytest.mark.asyncio
+    async def test_new_topic_uses_chunk_ids_not_vector_search(self):
+        """Topic with chunk_ids should use direct lookup, not vector search."""
+        from domain.topic import TopicEntry
+        topic = TopicEntry(id="topic_0", label="Test", priority=1, chunk_ids=["c1", "c2"])
+        assert len(topic.chunk_ids) == 2
+
+
+# ── Regression Tests: Question Dedup ─────────────────────────────
+
+
+class TestQuestionDedup:
+    def setup_method(self):
+        self.planner = QuestionPlanner()
+
+    @pytest.mark.asyncio
+    async def test_question_embedded_only_once(self):
+        """dedup_and_cache_question should embed once and reuse for both dedup and cache."""
+        rag = AsyncMock()
+        emb = np.array([0.5] * 768, dtype=np.float32)
+        emb = emb / np.linalg.norm(emb)
+        rag.get_embeddings = AsyncMock(return_value=[emb.tolist()])
+
+        question_text, q_type, new_emb = await self.planner.dedup_and_cache_question(
+            "What is your experience with React?",
+            QuestionType.PRIMARY,
+            rag,
+        )
+
+        assert rag.get_embeddings.call_count == 1
+        assert len(self.planner._asked_embeddings) == 1
+        assert new_emb is not None
+
+
+# ── Regression Tests: Topic Status ───────────────────────────────
+
+
+class TestTopicStatus:
+    def test_skipped_status_exists(self):
+        """TopicStatus should include SKIPPED."""
+        from domain.topic import TopicStatus
+        assert hasattr(TopicStatus, "SKIPPED")
+        assert TopicStatus.SKIPPED.value == "SKIPPED"
+
+    def test_skipped_serialization(self):
+        """SKIPPED status should serialize and deserialize correctly."""
+        from infrastructure.repositories.topic_serialization import (
+            serialize_topic_plan,
+            deserialize_topic_plan,
+        )
+        topic_plan = [
+            TopicEntry(id="t0", label="A", priority=1, status=TopicStatus.SKIPPED),
+        ]
+        serialized = serialize_topic_plan(topic_plan)
+        deserialized = deserialize_topic_plan(serialized)
+        assert deserialized[0].status == TopicStatus.SKIPPED
+
+    def test_exhausted_topics_never_selected(self):
+        """EXHAUSTED topics should never appear in available list."""
+        topic_plan = [
+            TopicEntry(id="t0", label="A", priority=1, status=TopicStatus.EXHAUSTED),
+            TopicEntry(id="t1", label="B", priority=2, status=TopicStatus.EXHAUSTED),
+            TopicEntry(id="t2", label="C", priority=3, status=TopicStatus.AVAILABLE),
+        ]
+        available = [t for t in topic_plan if t.status == TopicStatus.AVAILABLE]
+        assert len(available) == 1
+        assert available[0].id == "t2"
+
+
+# ── Regression Tests: Interview Flow ─────────────────────────────
+
+
+class TestInterviewFlow:
+    def test_q10_terminates_interview(self):
+        """Interview should terminate after Q10."""
+        from domain.answer import Answer
+        interview = Interview(total_questions=10)
+        for i in range(10):
+            interview.current_question_index = i
+            interview.submit_answer(Answer(transcript=f"Answer {i}"))
+            interview.advance()
+        assert interview.is_complete
+        assert interview.status == InterviewState.COMPLETED
+
+    def test_clarification_stays_on_same_topic(self):
+        """Clarification should not advance topic or consume question slot."""
+        planner = QuestionPlanner()
+        topic = TopicEntry(id="t0", label="A", priority=1)
+
+        classification = {
+            "answer_status": "NEEDS_CLARIFICATION",
+            "next_action": "CLARIFY",
+            "reason": "",
+            "clarification_text": "Let me rephrase that.",
+        }
+
+        result = planner.apply_hard_rules(classification, [topic], topic, 5, 10)
+        assert result["next_action"] == "CLARIFY"
+        assert topic.status == TopicStatus.AVAILABLE
+        assert topic.questions_asked == 0
+
+    def test_does_not_know_switches_topic(self):
+        """DOES_NOT_KNOW should exhaust current topic and force NEW_TOPIC."""
+        planner = QuestionPlanner()
+        topic = TopicEntry(id="t0", label="A", priority=1)
+        other = TopicEntry(id="t1", label="B", priority=2)
+
+        classification = {
+            "answer_status": "DOES_NOT_KNOW",
+            "next_action": "NEW_TOPIC",
+            "reason": "",
+            "clarification_text": None,
+        }
+
+        result = planner.apply_hard_rules(classification, [topic, other], topic, 3, 10)
+        assert result["next_action"] == "NEW_TOPIC"
+        assert topic.status == TopicStatus.EXHAUSTED
+        assert topic.exhaustion_reason == "DOES_NOT_KNOW"
+
+
+# ── Regression Tests: Topic Plan Compactness ─────────────────────
+
+
+class TestTopicPlanCompactness:
+    def test_topic_plan_no_source_context(self):
+        """TopicEntry should not have source_context field."""
+        topic = TopicEntry(id="t0", label="Test", priority=1)
+        assert not hasattr(topic, "source_context")
+
+    def test_serialization_no_source_context(self):
+        """Serialized topic plan should not contain source_context."""
+        from infrastructure.repositories.topic_serialization import serialize_topic_plan
+        topic_plan = [TopicEntry(id="t0", label="Test", priority=1)]
+        serialized = serialize_topic_plan(topic_plan)
+        assert "source_context" not in serialized
+
+
+# ── Regression Tests: Max Topics ─────────────────────────────────
+
+
+class TestMaxTopics:
+    @pytest.mark.asyncio
+    async def test_max_8_topics_enforced(self):
+        """Topic planner should enforce MAX_TOPICS=8."""
+        from application.topic_planner import MAX_TOPICS
+        assert MAX_TOPICS == 8

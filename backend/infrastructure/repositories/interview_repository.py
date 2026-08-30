@@ -12,39 +12,10 @@ from domain.topic import TopicEntry, TopicStatus
 from infrastructure.db.models import AnswerModel, InterviewModel, QuestionModel
 from infrastructure.db.session import get_session_factory
 from infrastructure.repositories.base import InterviewRepositoryInterface
-
-
-def _serialize_topic_plan(topic_plan: list[TopicEntry]) -> str:
-    return json.dumps([
-        {
-            "id": t.id,
-            "label": t.label,
-            "priority": t.priority,
-            "status": t.status.value,
-            "questions_asked": t.questions_asked,
-            "exhaustion_reason": t.exhaustion_reason,
-            "source_context": t.source_context,
-            "chunk_ids": t.chunk_ids,
-        }
-        for t in topic_plan
-    ])
-
-
-def _deserialize_topic_plan(raw: str) -> list[TopicEntry]:
-    data = json.loads(raw)
-    return [
-        TopicEntry(
-            id=t["id"],
-            label=t["label"],
-            priority=t["priority"],
-            status=TopicStatus(t["status"]),
-            questions_asked=t.get("questions_asked", 0),
-            exhaustion_reason=t.get("exhaustion_reason"),
-            source_context=t.get("source_context", ""),
-            chunk_ids=t.get("chunk_ids", []),
-        )
-        for t in data
-    ]
+from infrastructure.repositories.topic_serialization import (
+    serialize_topic_plan as _serialize_topic_plan,
+    deserialize_topic_plan as _deserialize_topic_plan,
+)
 
 
 class PostgresInterviewRepository(InterviewRepositoryInterface):

@@ -19,9 +19,10 @@ BATCH_SIZE = 32  # Process in small batches for Render Free (512 MB RAM)
 class RAGService:
     def __init__(self, document_repository: DocumentRepositoryInterface):
         self._repo = document_repository
-        self._chunk_size = 500  # characters per chunk
-        self._chunk_overlap = 50  # overlap between chunks
+        self._chunk_size = 500
+        self._chunk_overlap = 50
         self._client = httpx.AsyncClient(timeout=60.0)
+        self._last_chunks: list[dict] = []
 
     def _split_text(self, text: str) -> list[str]:
         chunks = []
@@ -75,6 +76,7 @@ class RAGService:
     async def ingest_documents(self, resume_text: str, jd_text: str, interview_id: str | None = None) -> dict:
         results = {}
         resume_doc_id = None
+        all_chunks: list[dict] = []
 
         for doc_type, text in [("resume", resume_text), ("job_description", jd_text)]:
             document = Document(id=uuid4(), document_type=doc_type)
@@ -104,7 +106,13 @@ class RAGService:
                 "chunks_count": len(chunks),
             }
 
-        # Link documents to interview if interview_id provided
+            for chunk in chunks:
+                all_chunks.append({
+                    "id": str(chunk.id),
+                    "content": chunk.content,
+                    "document_type": doc_type,
+                })
+
         if interview_id and resume_doc_id:
             jd_doc_id = results["job_description"]["document_id"]
             from uuid import UUID as _UUID
@@ -114,6 +122,8 @@ class RAGService:
                 jd_document_id=_UUID(jd_doc_id),
             )
 
+        results["chunks"] = all_chunks
+        self._last_chunks = all_chunks
         return results
 
     async def retrieve(
@@ -122,7 +132,6 @@ class RAGService:
     ) -> list[DocumentChunk]:
         query_embedding = (await self.get_embeddings([query], task="retrieval.query"))[0]
 
-        # If interview_id provided, filter by linked documents
         document_ids = None
         if interview_id:
             from uuid import UUID as _UUID
@@ -136,3 +145,11 @@ class RAGService:
         )
 
         return results
+
+    async def get_chunks_by_ids(self, chunk_ids: list[str]) -> list[DocumentChunk]:
+        """Retrieve specific chunks by their IDs."""
+        if not chunk_ids:
+            return []
+        from uuid import UUID as _UUID
+        uuids = [_UUID(cid) for cid in chunk_ids]
+        return await self._repo.search_chunks_by_ids(uuids)

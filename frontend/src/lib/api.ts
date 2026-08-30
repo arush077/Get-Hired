@@ -139,12 +139,14 @@ export async function getResults(
 export async function fetchTTS(
   text: string,
   voice: string,
-  speed: number
+  speed: number,
+  signal?: AbortSignal,
 ): Promise<Blob> {
   const res = await fetch(TTS_BASE, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, voice, speed }),
+    signal,
   });
   if (!res.ok) throw new Error("TTS request failed");
   return res.blob();

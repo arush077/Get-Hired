@@ -6,6 +6,7 @@ class TopicStatus(str, Enum):
     AVAILABLE = "AVAILABLE"
     ACTIVE = "ACTIVE"
     EXHAUSTED = "EXHAUSTED"
+    SKIPPED = "SKIPPED"
 
 
 @dataclass
@@ -16,5 +17,4 @@ class TopicEntry:
     status: TopicStatus = TopicStatus.AVAILABLE
     questions_asked: int = 0
     exhaustion_reason: str | None = None
-    source_context: str = ""
     chunk_ids: list[str] = field(default_factory=list)

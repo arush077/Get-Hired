@@ -50,6 +50,10 @@ class DocumentRepositoryInterface(ABC):
     async def get_document_ids_by_interview(self, interview_id: UUID) -> list[UUID]:
         pass
 
+    @abstractmethod
+    async def search_chunks_by_ids(self, chunk_ids: list[UUID]) -> list[DocumentChunk]:
+        pass
+
 
 class ResumeRepositoryInterface(ABC):
     @abstractmethod

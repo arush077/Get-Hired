@@ -68,8 +68,7 @@ class InterviewService:
         )
 
         topic_plan = await build_topic_plan(
-            resume_text=resume_text,
-            jd_text=jd_text,
+            chunks=self._rag._last_chunks if hasattr(self._rag, '_last_chunks') else [],
             job_role=job_role,
             llm=self._llm,
             rag=self._rag,
@@ -272,24 +271,47 @@ class InterviewService:
     async def _ensure_topic_chunks(
         self, interview_id: str, topic: TopicEntry | None, rag: RAGService
     ) -> list[str]:
-        """Retrieve and cache topic RAG chunks if not already cached."""
+        """Retrieve and cache topic RAG chunks if not already cached.
+
+        Uses topic.chunk_ids for direct lookup. Falls back to vector search
+        only if chunk_ids are empty (legacy topics).
+        """
         if not topic:
             return []
         cached = self._planner.get_cached_chunks(interview_id, topic.id)
         if cached is not None:
             return cached
-        try:
-            async with Timer("topic_rag_retrieval").measure() as t:
-                raw_chunks = await rag.retrieve(
-                    query=topic.label,
-                    interview_id=interview_id,
-                    top_k=3,
+
+        chunks = []
+
+        if topic.chunk_ids:
+            try:
+                async with Timer("topic_chunk_lookup").measure() as t:
+                    raw_chunks = await rag.get_chunks_by_ids(topic.chunk_ids)
+                    chunks = [c.content for c in raw_chunks]
+                logger.info(
+                    "[TOPIC_CACHE] Retrieved %d chunks for topic '%s' via chunk_ids in %.2fs",
+                    len(chunks), topic.label, t.elapsed,
                 )
-                chunks = [c.content for c in raw_chunks]
-            logger.info("[TOPIC_CACHE] Retrieved %d chunks for topic '%s' in %.2fs",
-                        len(chunks), topic.label, t.elapsed)
-        except Exception:
-            chunks = []
+            except Exception as e:
+                logger.warning("[TOPIC_CACHE] chunk_ids lookup failed: %s", e)
+
+        if not chunks:
+            try:
+                async with Timer("topic_rag_retrieval").measure() as t:
+                    raw_chunks = await rag.retrieve(
+                        query=topic.label,
+                        interview_id=interview_id,
+                        top_k=3,
+                    )
+                    chunks = [c.content for c in raw_chunks]
+                logger.info(
+                    "[TOPIC_CACHE] Retrieved %d chunks for topic '%s' via vector search in %.2fs",
+                    len(chunks), topic.label, t.elapsed,
+                )
+            except Exception:
+                chunks = []
+
         self._planner.cache_chunks(interview_id, topic.id, chunks)
         return chunks
 

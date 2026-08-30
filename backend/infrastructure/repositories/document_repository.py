@@ -97,3 +97,24 @@ class DocumentRepository(DocumentRepositoryInterface):
             if not link:
                 return []
             return [link.resume_document_id, link.jd_document_id]
+
+    async def search_chunks_by_ids(self, chunk_ids: list[UUID]) -> list[DocumentChunk]:
+        async with self._get_session_factory()() as session:
+            if not chunk_ids:
+                return []
+            query = select(DocumentChunkModel).where(
+                DocumentChunkModel.id.in_(chunk_ids)
+            )
+            result = await session.execute(query)
+            rows = result.all()
+            return [
+                DocumentChunk(
+                    id=row.DocumentChunkModel.id,
+                    document_id=row.DocumentChunkModel.document_id,
+                    chunk_index=row.DocumentChunkModel.chunk_index,
+                    content=row.DocumentChunkModel.content,
+                    embedding=row.DocumentChunkModel.embedding,
+                    created_at=row.DocumentChunkModel.created_at,
+                )
+                for row in rows
+            ]

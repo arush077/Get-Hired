@@ -175,43 +175,6 @@ class LLMService:
         ]
         return await self._generate_with_retry(messages)
 
-    async def generate_follow_up_question(
-        self,
-        job_role: str,
-        previous_question: str,
-        previous_answer: str,
-        context_chunks: list[str],
-        topic_label: str,
-    ) -> str:
-        chunks_text = "\n".join(f"- {c}" for c in context_chunks)
-
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are an expert technical interviewer. "
-                    "Generate ONE insightful follow-up question based on the candidate's previous answer.\n\n"
-                    + GROUNDING_RULES
-                    + f"The current topic is: {topic_label}.\n"
-                    "Dig deeper into their actual experience. Ask for specifics, examples, or details "
-                    "mentioned in their answer or the Resume/JD context.\n"
-                    + CONCISENESS_INSTRUCTION
-                    + 'Return ONLY valid JSON: {"question": "..."}'
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Job Role: {job_role}\n\n"
-                    f"Previous Question: {previous_question}\n"
-                    f"Candidate's Answer: {previous_answer}\n\n"
-                    f"Relevant Resume/JD Context:\n{chunks_text}\n\n"
-                    "Generate a follow-up question grounded in the above context and answer."
-                ),
-            },
-        ]
-        return await self._generate_with_retry(messages)
-
     async def generate_analysis(self, transcript: str) -> dict:
         messages = [
             {
