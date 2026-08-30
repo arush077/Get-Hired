@@ -21,7 +21,7 @@ export function Header() {
         <Link to="/" className="flex items-center gap-1.5">
           <Logo className="size-6 text-white" />
           <span className="text-base font-medium bg-gradient-to-r from-pink-500 to-red-600 bg-clip-text text-transparent">
-            InterviewReady
+            GetHired
           </span>
         </Link>
 

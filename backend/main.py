@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI):
     await dispose_engine()
 
 
-app = FastAPI(title="InterviewReady", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="GetHired", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -47,7 +47,7 @@ app.include_router(tts_router)
 
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health():
-    return {"status": "ok", "service": "interviewready"}
+    return {"status": "ok", "service": "gethired"}
 
 
 if __name__ == "__main__":

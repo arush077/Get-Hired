@@ -13,7 +13,7 @@ from infrastructure.db.session import get_session_factory
 
 load_dotenv()
 
-JWT_SECRET = os.getenv("JWT_SECRET", "interviewready-dev-secret-change-in-production")
+JWT_SECRET = os.getenv("JWT_SECRET", "gethired-dev-secret-change-in-production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRES_IN = "7d"
 

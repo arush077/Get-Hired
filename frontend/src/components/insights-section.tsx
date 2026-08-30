@@ -5,7 +5,7 @@ const LABEL = "SMARTER INSIGHTS";
 const TEXT_WHITE =
   "With predictive analytics, automated workflows, and beautifully simple dashboards, ";
 const TEXT_GREY =
-  "InterviewReady helps you uncover patterns, optimize performance, and make decisions with confidence.";
+  "GetHired helps you uncover patterns, optimize performance, and make decisions with confidence.";
 const FULL_TEXT = TEXT_WHITE + TEXT_GREY;
 
 export function InsightsSection() {

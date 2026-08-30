@@ -26,7 +26,7 @@ export function Login() {
         <div className="w-full max-w-md">
           <div className="bg-neutral-900/50 backdrop-blur-xl border border-neutral-800 rounded-2xl p-8">
             <h1 className="text-2xl font-semibold mb-2">Welcome back</h1>
-            <p className="text-neutral-400 text-sm mb-6">Sign in to your InterviewReady account</p>
+            <p className="text-neutral-400 text-sm mb-6">Sign in to your GetHired account</p>
 
             {error && (
               <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 mb-4 text-sm text-red-400">

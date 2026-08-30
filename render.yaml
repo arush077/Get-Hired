@@ -1,7 +1,7 @@
 services:
   # Monolithic backend — Interview + RAG + Voice + Analysis
   - type: web
-    name: interview-ready
+    name: get-hired
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt
