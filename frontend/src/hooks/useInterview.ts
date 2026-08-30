@@ -17,7 +17,7 @@ export type InterviewState =
   | "waiting"
   | "results";
 
-const DEFAULT_VOICE = "en-US-AvaNeural";
+const DEFAULT_VOICE = "en-IE-EmilyNeural";
 const DEFAULT_SPEED = 1.0;
 
 export function useInterview() {
