@@ -3,7 +3,7 @@ from uuid import UUID
 
 from dotenv import load_dotenv
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,8 +16,6 @@ load_dotenv()
 JWT_SECRET = os.getenv("JWT_SECRET", "gethired-dev-secret-change-in-production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRES_IN = "7d"
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class AuthService:
@@ -36,7 +34,7 @@ class AuthService:
                 user = UserModel(
                     name=name.strip(),
                     email=email.lower().strip(),
-                    password_hash=pwd_context.hash(password[:72]),
+                    password_hash=bcrypt.hashpw(password[:72].encode(), bcrypt.gensalt()).decode(),
                 )
                 session.add(user)
 
@@ -53,7 +51,7 @@ class AuthService:
             )
             user = result.scalar_one_or_none()
 
-            if not user or not pwd_context.verify(password[:72], user.password_hash):
+            if not user or not bcrypt.checkpw(password[:72].encode(), user.password_hash.encode()):
                 raise ValueError("Invalid credentials")
 
             token = self._sign_token(user.id, user.email)

@@ -14,11 +14,15 @@ DATABASE_URL = os.getenv(
 if DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-if "localhost" not in DATABASE_URL and "?" not in DATABASE_URL:
-    DATABASE_URL += "?ssl=require"
+if DATABASE_URL.startswith("postgresql+asyncpg://") and "?" in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.split("?")[0]
 
 _engine = None
 _session_factory = None
+
+_connect_args = {}
+if "localhost" not in DATABASE_URL:
+    _connect_args["ssl"] = "require"
 
 
 def get_engine():
@@ -29,6 +33,7 @@ def get_engine():
             echo=False,
             pool_pre_ping=True,
             pool_recycle=180,
+            connect_args=_connect_args,
         )
     return _engine
 
