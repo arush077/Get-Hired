@@ -32,14 +32,32 @@ class InterviewService:
         self,
         candidate_name: str,
         job_role: str,
-        resume_text: str,
         jd_text: str,
         total_questions: int = 10,
+        user_id: UUID | None = None,
+        resume_id: str | None = None,
+        resume_text: str | None = None,
     ) -> Interview:
+        # Resolve resume text from saved resume or use provided text
+        resolved_resume_id = None
+        if resume_id:
+            resolved_resume_id = UUID(resume_id)
+            from api.dependencies import get_resume_service
+            resume_service = get_resume_service()
+            resume = await resume_service.get_resume(resolved_resume_id, user_id)
+            if not resume:
+                raise ValueError("Resume not found")
+            resume_text = resume.to_text()
+
+        if not resume_text:
+            raise ValueError("Resume text is required")
+
         interview = Interview(
+            user_id=user_id,
             candidate_name=candidate_name,
             job_role=job_role,
             total_questions=total_questions,
+            resume_id=resolved_resume_id,
         )
 
         await self._rag.ingest_documents(

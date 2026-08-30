@@ -43,6 +43,11 @@ class LLMService:
         )
         return response.choices[0].message.content.strip()
 
+    async def generate_content(self, prompt: str) -> str:
+        """Generate content from a single prompt (used for resume AI features)."""
+        messages = [{"role": "user", "content": prompt}]
+        return self._chat(messages, max_tokens=1024)
+
     def _parse_json(self, text: str) -> dict:
         if "```" in text:
             match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)

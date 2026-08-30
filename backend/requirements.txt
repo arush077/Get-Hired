@@ -11,3 +11,6 @@ httpx
 pgvector
 edge-tts
 numpy
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt

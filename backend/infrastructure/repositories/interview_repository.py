@@ -57,9 +57,11 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                 existing = await session.get(InterviewModel, interview.id)
 
                 if existing:
+                    existing.user_id = interview.user_id
                     existing.candidate_name = interview.candidate_name
                     existing.job_role = interview.job_role
                     existing.status = interview.status.value
+                    existing.resume_id = interview.resume_id
                     existing.current_question_index = interview.current_question_index
                     existing.total_questions = interview.total_questions
                     existing.topic_plan = _serialize_topic_plan(interview.topic_plan)
@@ -104,9 +106,11 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                 else:
                     db_interview = InterviewModel(
                         id=interview.id,
+                        user_id=interview.user_id,
                         candidate_name=interview.candidate_name,
                         job_role=interview.job_role,
                         status=interview.status.value,
+                        resume_id=interview.resume_id,
                         current_question_index=interview.current_question_index,
                         total_questions=interview.total_questions,
                         topic_plan=_serialize_topic_plan(interview.topic_plan),
@@ -203,9 +207,11 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
 
         return Interview(
             id=db_interview.id,
+            user_id=db_interview.user_id,
             candidate_name=db_interview.candidate_name,
             job_role=db_interview.job_role,
             status=InterviewState(db_interview.status),
+            resume_id=db_interview.resume_id,
             questions=domain_questions,
             answers=answers_dict,
             current_question_index=db_interview.current_question_index,

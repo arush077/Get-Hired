@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from api.contracts import (
     StartInterviewRequest,
@@ -17,16 +17,25 @@ router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
 @router.post("", response_model=StartInterviewResponse)
 async def start_interview(
+    request: Request,
     payload: StartInterviewRequest,
     service: InterviewService = Depends(get_interview_service),
 ):
-    interview = await service.start_interview(
-        candidate_name=payload.candidate_name,
-        job_role=payload.job_role,
-        resume_text=payload.resume_text,
-        jd_text=payload.jd_text,
-        total_questions=payload.total_questions,
-    )
+    user = getattr(request.state, "user", None)
+    user_id = UUID(user["id"]) if user else None
+
+    try:
+        interview = await service.start_interview(
+            candidate_name=payload.candidate_name,
+            job_role=payload.job_role,
+            jd_text=payload.jd_text,
+            total_questions=payload.total_questions,
+            user_id=user_id,
+            resume_id=payload.resume_id,
+            resume_text=payload.resume_text,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     question = interview.current_question()
     return StartInterviewResponse(

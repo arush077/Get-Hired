@@ -3,6 +3,7 @@ from uuid import UUID
 
 from domain.document import Document, DocumentChunk
 from domain.interview import Interview
+from domain.resume import Resume
 
 
 class InterviewRepositoryInterface(ABC):
@@ -47,4 +48,26 @@ class DocumentRepositoryInterface(ABC):
 
     @abstractmethod
     async def get_document_ids_by_interview(self, interview_id: UUID) -> list[UUID]:
+        pass
+
+
+class ResumeRepositoryInterface(ABC):
+    @abstractmethod
+    async def create(self, resume: Resume) -> Resume:
+        pass
+
+    @abstractmethod
+    async def get(self, resume_id: UUID, user_id: UUID) -> Resume | None:
+        pass
+
+    @abstractmethod
+    async def list_by_user(self, user_id: UUID) -> list[dict]:
+        pass
+
+    @abstractmethod
+    async def update(self, resume: Resume) -> Resume | None:
+        pass
+
+    @abstractmethod
+    async def delete(self, resume_id: UUID, user_id: UUID) -> bool:
         pass
