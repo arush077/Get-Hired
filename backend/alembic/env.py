@@ -1,6 +1,7 @@
 import sys
 import os
 from logging.config import fileConfig
+from dotenv import load_dotenv
 
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 from infrastructure.db.models import Base
 
