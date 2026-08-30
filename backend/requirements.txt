@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+gunicorn
+pydantic
+sqlalchemy[asyncio]
+asyncpg
+alembic
+python-dotenv
+groq>=0.4.0
+httpx
+pgvector
+edge-tts
+numpy

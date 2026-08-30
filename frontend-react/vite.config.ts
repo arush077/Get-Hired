@@ -6,9 +6,9 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      '/api': 'http://localhost:8003',
-      '/tts': 'http://localhost:8003',
-      '/rag': 'http://localhost:8004',
+      '/api': 'http://localhost:8000',
+      '/tts': 'http://localhost:8000',
+      '/rag': 'http://localhost:8000',
     },
   },
 })

@@ -1,7 +1,7 @@
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const TTS_BASE = import.meta.env.VITE_TTS_URL || "/tts";
 
-const RETRY_DELAYS = [3000, 6000];
+const RETRY_DELAYS = [3000];
 const RETRYABLE_STATUS = [502, 503, 504];
 
 export interface InterviewStartResponse {
@@ -42,15 +42,6 @@ async function fetchWithRetry(
 ): Promise<Response> {
   for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
     const res = await fetch(url, options);
-
-    if (res.status === 429) {
-      const retryAfter = res.headers.get("retry-after");
-      if (retryAfter) {
-        await new Promise((r) => setTimeout(r, parseInt(retryAfter) * 1000));
-        continue;
-      }
-      throw new Error("Rate limited. Please try again later.");
-    }
 
     if (RETRYABLE_STATUS.includes(res.status) && attempt < RETRY_DELAYS.length) {
       await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
