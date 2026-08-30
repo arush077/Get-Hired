@@ -1,5 +1,5 @@
 export const API_BASE = import.meta.env.VITE_API_URL || "/api";
-const TTS_BASE = import.meta.env.VITE_TTS_URL || "/tts";
+const TTS_BASE = import.meta.env.VITE_TTS_URL || (API_BASE.replace(/\/api\/?$/, "") + "/tts");
 
 const RETRY_DELAYS = [3000];
 const RETRYABLE_STATUS = [502, 503, 504];
