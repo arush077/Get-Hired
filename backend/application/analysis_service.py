@@ -31,4 +31,4 @@ class AnalysisService:
             }
 
         transcript = "\n".join(lines).strip()
-        return self._llm.generate_analysis(transcript)
+        return await self._llm.generate_analysis(transcript)

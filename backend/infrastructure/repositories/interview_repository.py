@@ -68,9 +68,28 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                     existing.current_topic_id = interview.current_topic_id
                     existing.analysis = json.dumps(interview.analysis) if interview.analysis else None
 
+                    # Batch-load existing question IDs and answer question_ids
+                    q_ids = [q.id for q in interview.questions]
+                    existing_q_result = await session.execute(
+                        select(QuestionModel.id).where(
+                            QuestionModel.interview_id == interview.id,
+                            QuestionModel.id.in_(q_ids),
+                        )
+                    )
+                    existing_q_ids = {row[0] for row in existing_q_result.all()}
+
+                    a_q_ids = [interview.questions[idx].id for idx in interview.answers if idx < len(interview.questions)]
+                    existing_a_result = await session.execute(
+                        select(AnswerModel.question_id).where(
+                            AnswerModel.interview_id == interview.id,
+                            AnswerModel.question_id.in_(a_q_ids),
+                        )
+                    )
+                    existing_a_q_ids = {row[0] for row in existing_a_result.all()}
+
+                    # Insert new questions
                     for q in interview.questions:
-                        q_exists = await session.get(QuestionModel, q.id)
-                        if not q_exists:
+                        if q.id not in existing_q_ids:
                             session.add(
                                 QuestionModel(
                                     id=q.id,
@@ -81,17 +100,19 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                                 )
                             )
 
+                    # Insert/update answers
                     for idx, a in interview.answers.items():
                         if idx < len(interview.questions):
                             q_id = interview.questions[idx].id
-                            a_exists = await session.execute(
-                                select(AnswerModel).where(
-                                    AnswerModel.interview_id == interview.id,
-                                    AnswerModel.question_id == q_id,
+                            if q_id in existing_a_q_ids:
+                                # Update existing answer
+                                a_row_result = await session.execute(
+                                    select(AnswerModel).where(
+                                        AnswerModel.interview_id == interview.id,
+                                        AnswerModel.question_id == q_id,
+                                    )
                                 )
-                            )
-                            a_row = a_exists.scalar_one_or_none()
-                            if a_row:
+                                a_row = a_row_result.scalar_one()
                                 a_row.transcript = a.transcript
                                 a_row.answer_status = a.answer_status.value if a.answer_status else None
                             else:

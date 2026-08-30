@@ -4,7 +4,7 @@ import os
 import re
 
 from dotenv import load_dotenv
-from groq import Groq
+from groq import AsyncGroq
 
 load_dotenv()
 
@@ -32,10 +32,10 @@ GROUNDING_RULES = (
 
 class LLMService:
     def __init__(self):
-        self._client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        self._client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
 
-    def _chat(self, messages: list[dict], max_tokens: int = 512) -> str:
-        response = self._client.chat.completions.create(
+    async def _chat(self, messages: list[dict], max_tokens: int = 512) -> str:
+        response = await self._client.chat.completions.create(
             model=GROQ_MODEL,
             messages=messages,
             temperature=0.7,
@@ -46,7 +46,7 @@ class LLMService:
     async def generate_content(self, prompt: str) -> str:
         """Generate content from a single prompt (used for resume AI features)."""
         messages = [{"role": "user", "content": prompt}]
-        return self._chat(messages, max_tokens=1024)
+        return await self._chat(messages, max_tokens=1024)
 
     def _parse_json(self, text: str) -> dict:
         if "```" in text:
@@ -87,9 +87,9 @@ class LLMService:
             return False
         return True
 
-    def _generate_with_retry(self, messages: list[dict], max_tokens: int = 512) -> str:
+    async def _generate_with_retry(self, messages: list[dict], max_tokens: int = 512) -> str:
         for attempt in range(MAX_RETRIES):
-            raw = self._chat(messages, max_tokens=max_tokens)
+            raw = await self._chat(messages, max_tokens=max_tokens)
             try:
                 data = self._parse_json(raw)
                 question = data.get("question", "")
@@ -118,7 +118,7 @@ class LLMService:
                 )
         return "Can you tell me more about your experience?"
 
-    def generate_hr_question(self, candidate_name: str, job_role: str, variant: str) -> str:
+    async def generate_hr_question(self, candidate_name: str, job_role: str, variant: str) -> str:
         messages = [
             {
                 "role": "system",
@@ -137,9 +137,9 @@ class LLMService:
                 "content": f"Generate a {variant} question for {candidate_name}.",
             },
         ]
-        return self._generate_with_retry(messages)
+        return await self._generate_with_retry(messages)
 
-    def generate_primary_question(
+    async def generate_primary_question(
         self,
         job_role: str,
         search_angle: str,
@@ -173,9 +173,9 @@ class LLMService:
                 ),
             },
         ]
-        return self._generate_with_retry(messages)
+        return await self._generate_with_retry(messages)
 
-    def generate_follow_up_question(
+    async def generate_follow_up_question(
         self,
         job_role: str,
         previous_question: str,
@@ -210,9 +210,9 @@ class LLMService:
                 ),
             },
         ]
-        return self._generate_with_retry(messages)
+        return await self._generate_with_retry(messages)
 
-    def generate_analysis(self, transcript: str) -> dict:
+    async def generate_analysis(self, transcript: str) -> dict:
         messages = [
             {
                 "role": "system",
@@ -252,10 +252,10 @@ class LLMService:
                 "content": f"Interview Transcript:\n\n{transcript}",
             },
         ]
-        raw = self._chat(messages, max_tokens=1024)
+        raw = await self._chat(messages, max_tokens=1024)
         return self._parse_json(raw)
 
-    def classify_and_plan_next(
+    async def classify_and_generate_next(
         self,
         job_role: str,
         current_question: str,
@@ -266,14 +266,21 @@ class LLMService:
         context_chunks: list[str],
         interview_history: list[dict],
         previously_asked_questions: list[str],
+        should_generate_question: bool = True,
+        question_type: str = "FOLLOW_UP",
     ) -> dict:
-        """Classify the candidate's answer and decide the next action.
+        """Unified LLM call: classify answer + decide action + optionally generate question.
+
+        For same-topic follow-up: returns answer_status, next_action, AND question.
+        For NEW_TOPIC: returns answer_status, next_action only (Python handles topic selection).
+        For CLARIFY: returns answer_status, next_action, AND clarification_text.
 
         Returns:
             {
                 "answer_status": "ANSWERED" | "PARTIAL_ANSWER" | "DOES_NOT_KNOW" | "NEEDS_CLARIFICATION",
                 "next_action": "FOLLOW_UP" | "NEW_TOPIC" | "CLARIFY",
                 "reason": "...",
+                "question": "..." (when next_action=FOLLOW_UP and should_generate_question=True),
                 "clarification_text": "..." (only when next_action=CLARIFY)
             }
         """
@@ -283,6 +290,37 @@ class LLMService:
         history_text = ""
         for i, qa in enumerate(interview_history[-3:]):
             history_text += f"Q{i+1}: {qa['question']}\nA{i+1}: {qa['answer']}\n\n"
+
+        if should_generate_question:
+            if question_type == "FOLLOW_UP":
+                action_instruction = (
+                    "- FOLLOW_UP: Answer is incomplete or interesting — ask a deeper follow-up on the SAME topic.\n"
+                    "  You MUST also generate the follow-up question in the 'question' field.\n"
+                )
+            else:
+                action_instruction = (
+                    "- FOLLOW_UP: Answer is incomplete or interesting — ask a deeper follow-up on the SAME topic.\n"
+                    "  You MUST also generate the follow-up question in the 'question' field.\n"
+                )
+            output_format = (
+                'Return ONLY valid JSON: {"answer_status": "...", "next_action": "...", "reason": "...", '
+                '"question": "...", "clarification_text": null}\n'
+                "- question: the next interview question when next_action is FOLLOW_UP.\n"
+                "- clarification_text: a genuine rephrasing of the question when next_action is CLARIFY, otherwise null.\n"
+                "- reason: for internal debugging only, keep it short (one sentence)."
+            )
+        else:
+            action_instruction = (
+                "- FOLLOW_UP: Answer is incomplete or interesting — ask a deeper follow-up on the SAME topic.\n"
+                "- NEW_TOPIC: Answer is complete, topic is exhausted, or candidate doesn't know. Move to a DIFFERENT topic.\n"
+            )
+            output_format = (
+                'Return ONLY valid JSON: {"answer_status": "...", "next_action": "...", "reason": "...", '
+                '"question": null, "clarification_text": null}\n'
+                "- question: leave null, Python will handle question generation.\n"
+                "- clarification_text: a genuine rephrasing of the question when next_action is CLARIFY, otherwise null.\n"
+                "- reason: for internal debugging only, keep it short (one sentence)."
+            )
 
         messages = [
             {
@@ -296,8 +334,7 @@ class LLMService:
                     "- NEEDS_CLARIFICATION: Candidate is asking what the question means or asking for clarification\n\n"
                     "STEP 2: Decide the next action:\n"
                     "- CLARIFY: Candidate didn't understand the question. Generate a genuine rephrasing of the question.\n"
-                    "- FOLLOW_UP: Answer is incomplete or interesting — ask a deeper follow-up on the SAME topic.\n"
-                    "- NEW_TOPIC: Answer is complete, topic is exhausted, or candidate doesn't know. Move to a DIFFERENT topic.\n\n"
+                    + action_instruction +
                     "RULES:\n"
                     "- If answer_status is DOES_NOT_KNOW, next_action MUST be NEW_TOPIC.\n"
                     "- If answer_status is NEEDS_CLARIFICATION, next_action MUST be CLARIFY.\n"
@@ -310,9 +347,7 @@ class LLMService:
                     f"Questions already asked on this topic: {questions_on_topic}\n"
                     f"Topics available: {remaining_text}\n"
                     f"Previously asked questions:\n{asked_text}\n\n"
-                    'Return ONLY valid JSON: {"answer_status": "...", "next_action": "...", "reason": "...", "clarification_text": null}\n'
-                    "- clarification_text should be a genuine rephrasing of the question when next_action is CLARIFY, otherwise null.\n"
-                    "- reason is for internal debugging only, keep it short (one sentence)."
+                    + output_format
                 ),
             },
             {
@@ -327,12 +362,13 @@ class LLMService:
             },
         ]
 
-        raw = self._chat(messages, max_tokens=512)
+        raw = await self._chat(messages, max_tokens=1024)
         try:
             data = self._parse_json(raw)
             answer_status = data.get("answer_status", "ANSWERED")
             next_action = data.get("next_action", "NEW_TOPIC")
             clarification_text = data.get("clarification_text")
+            question = data.get("question")
 
             if answer_status not in ("ANSWERED", "PARTIAL_ANSWER", "DOES_NOT_KNOW", "NEEDS_CLARIFICATION"):
                 answer_status = "ANSWERED"
@@ -343,13 +379,15 @@ class LLMService:
                 "answer_status": answer_status,
                 "next_action": next_action,
                 "reason": data.get("reason", ""),
+                "question": question,
                 "clarification_text": clarification_text if next_action == "CLARIFY" else None,
             }
         except (ValueError, KeyError) as e:
-            logger.warning("[LLM] classify_and_plan_next parse failed: %s | raw: %r", e, raw[:200])
+            logger.warning("[LLM] classify_and_generate_next parse failed: %s | raw: %r", e, raw[:200])
             return {
                 "answer_status": "ANSWERED",
                 "next_action": "NEW_TOPIC",
                 "reason": f"Parse failed: {e}",
+                "question": None,
                 "clarification_text": None,
             }

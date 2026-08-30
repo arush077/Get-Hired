@@ -95,7 +95,7 @@ async def _extract_topics(
         },
     ]
 
-    raw = llm._chat(messages, max_tokens=1536)
+    raw = await llm._chat(messages, max_tokens=1536)
     data = llm._parse_json(raw)
 
     topics = data.get("topics", [])
