@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, model_validator
 
 from domain.resume import Resume
+from domain.interview_mode import InterviewMode
 
 
 # ── Auth contracts ───────────────────────────────────────────────
@@ -38,6 +39,7 @@ class StartInterviewRequest(BaseModel):
     resume_text: str | None = None
     jd_text: str
     total_questions: int = 10
+    interview_mode: InterviewMode = InterviewMode.MIXED
 
     @model_validator(mode="after")
     def validate_resume_source(self):
@@ -53,6 +55,7 @@ class StartInterviewResponse(BaseModel):
     total_questions: int
     question: str
     question_index: int
+    interview_mode: str
 
 
 class AnswerRequest(BaseModel):

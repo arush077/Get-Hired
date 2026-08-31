@@ -14,6 +14,7 @@ async def build_topic_plan(
     job_role: str,
     llm,
     total_questions: int,
+    strategy=None,
 ) -> list[TopicEntry]:
     """Build topic plan with primary questions from full Resume + JD.
 
@@ -25,6 +26,7 @@ async def build_topic_plan(
         job_role: Target job role.
         llm: LLMService instance.
         total_questions: Number of questions to plan for.
+        strategy: InterviewStrategy for mode-specific instructions.
     """
     request_count = min(total_questions + 3, MAX_TOPICS)
     raw_topics = await _extract_topics(
@@ -33,6 +35,7 @@ async def build_topic_plan(
         job_role=job_role,
         llm=llm,
         count=request_count,
+        strategy=strategy,
     )
 
     topic_plan = [
@@ -61,11 +64,16 @@ async def _extract_topics(
     job_role: str,
     llm,
     count: int,
+    strategy=None,
 ) -> list[dict]:
     """LLM call: extract topics with provenance and primary questions.
 
     Returns list of {id, label, source, priority, primary_question} dicts.
     """
+    strategy_block = ""
+    if strategy:
+        strategy_block = "\n\n" + strategy.get_initial_planning_instructions()
+
     messages = [
         {
             "role": "system",
@@ -92,6 +100,7 @@ async def _extract_topics(
                 "- label: 5-15 word description of the interviewable subject\n"
                 "- question: 15-35 words, specific and grounded in resume evidence\n"
                 "- source: REQUIRED — must be a specific entity name from the resume, never empty\n"
+                f"{strategy_block}"
             ),
         },
         {

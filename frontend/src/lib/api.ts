@@ -4,11 +4,21 @@ const TTS_BASE = import.meta.env.VITE_TTS_URL || (API_BASE.replace(/\/api\/?$/, 
 const RETRY_DELAYS = [3000];
 const RETRYABLE_STATUS = [502, 503, 504];
 
+export type InterviewMode = "RESUME_DEEP_DIVE" | "BEHAVIORAL" | "HR_SCREENING" | "MIXED";
+
+export const INTERVIEW_MODES: { value: InterviewMode; label: string; description: string }[] = [
+  { value: "MIXED", label: "Mixed Interview", description: "Balanced mix of resume, behavioral, and HR questions" },
+  { value: "RESUME_DEEP_DIVE", label: "Resume Deep Dive", description: "Deep technical exploration of projects and experience" },
+  { value: "BEHAVIORAL", label: "Behavioral", description: "Focus on teamwork, conflict, leadership, and decision-making" },
+  { value: "HR_SCREENING", label: "HR Screening", description: "Recruiter-style conversation about motivation and fit" },
+];
+
 export interface InterviewStartResponse {
   interview_id: string;
   question: string;
   question_index: number;
   total_questions: number;
+  interview_mode: string;
 }
 
 export interface AnswerResponse {
@@ -94,12 +104,14 @@ export async function startInterview(params: {
   jdText: string;
   resumeId?: string;
   resumeText?: string;
+  interviewMode?: InterviewMode;
 }): Promise<InterviewStartResponse> {
   const body: Record<string, string | number | undefined> = {
     candidate_name: params.candidateName,
     job_role: params.jobRole,
     jd_text: params.jdText,
     total_questions: 8,
+    interview_mode: params.interviewMode || "MIXED",
   };
 
   if (params.resumeId) {

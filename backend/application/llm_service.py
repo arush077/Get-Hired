@@ -143,6 +143,7 @@ class LLMService:
         interview_history: list[dict],
         previously_asked_questions: list[str],
         next_topic_id: str | None = None,
+        strategy=None,
     ) -> dict:
         """ONE LLM call: classify answer + decide action + generate follow-up if needed.
 
@@ -161,6 +162,10 @@ class LLMService:
         history_text = ""
         for i, qa in enumerate(interview_history[-3:]):
             history_text += f"Q{i+1}: {qa['question']}\nA{i+1}: {qa['answer']}\n\n"
+
+        strategy_block = ""
+        if strategy:
+            strategy_block = "\n\n" + strategy.get_runtime_instructions()
 
         messages = [
             {
@@ -187,7 +192,8 @@ class LLMService:
                     "- NEVER invent candidate experience, projects, technologies, responsibilities, or achievements.\n"
                     "- NEVER mix facts from different projects, jobs, or resume sections.\n"
                     "- If the context mentions a specific tool or metric for THIS topic, you may reference it.\n"
-                    "- Do NOT reference tools, metrics, or responsibilities from OTHER projects or experiences.\n\n"
+                    "- Do NOT reference tools, metrics, or responsibilities from OTHER projects or experiences.\n"
+                    f"{strategy_block}\n\n"
 
                     "RULES:\n"
                     "- If answer_status is DOES_NOT_KNOW, next_action MUST be NEW_TOPIC.\n"
@@ -290,6 +296,11 @@ class LLMService:
 
         qa_block = "\n\n".join(qa_lines)
 
+        strategy = interview_context.get("strategy")
+        strategy_block = ""
+        if strategy:
+            strategy_block = "\n\n" + strategy.get_evaluation_instructions()
+
         messages = [
             {
                 "role": "system",
@@ -309,7 +320,8 @@ class LLMService:
                     "- Reward specific examples, clear reasoning, structured answers.\n"
                     "- Do not require every answer to contain a measurable metric.\n"
                     "- For recurring patterns: only report if visible in 2+ answers.\n"
-                    "- For JD match: compare demonstrated skills against JD requirements.\n\n"
+                    "- For JD match: compare demonstrated skills against JD requirements.\n"
+                    f"{strategy_block}\n\n"
 
                     "OUTPUT SCHEMA (return ONLY valid JSON):\n"
                     "{\n"

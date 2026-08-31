@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 from domain.question import Question
 from domain.answer import Answer
 from domain.interview_state import InterviewState
+from domain.interview_mode import InterviewMode
 from domain.topic import TopicEntry
 
 
@@ -13,6 +14,7 @@ class Interview:
     user_id: UUID | None = None
     candidate_name: str = ""
     job_role: str = ""
+    interview_mode: InterviewMode = InterviewMode.MIXED
     status: InterviewState = field(default_factory=lambda: InterviewState.CREATED)
     resume_id: UUID | None = None
     resume_snapshot: str = ""

@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from domain.answer import Answer, AnswerStatus
 from domain.interview import Interview
+from domain.interview_mode import InterviewMode
 from domain.question import Question, QuestionType
 from domain.topic import TopicEntry, TopicStatus
 from infrastructure.db.models import AnswerModel, InterviewModel, QuestionModel
@@ -31,6 +32,7 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                     existing.user_id = interview.user_id
                     existing.candidate_name = interview.candidate_name
                     existing.job_role = interview.job_role
+                    existing.interview_mode = interview.interview_mode.value
                     existing.status = interview.status.value
                     existing.resume_id = interview.resume_id
                     existing.resume_snapshot = interview.resume_snapshot
@@ -103,6 +105,7 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                         user_id=interview.user_id,
                         candidate_name=interview.candidate_name,
                         job_role=interview.job_role,
+                        interview_mode=interview.interview_mode.value,
                         status=interview.status.value,
                         resume_id=interview.resume_id,
                         resume_snapshot=interview.resume_snapshot,
@@ -206,6 +209,7 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
             user_id=db_interview.user_id,
             candidate_name=db_interview.candidate_name,
             job_role=db_interview.job_role,
+            interview_mode=InterviewMode(db_interview.interview_mode) if db_interview.interview_mode else InterviewMode.MIXED,
             status=InterviewState(db_interview.status),
             resume_id=db_interview.resume_id,
             resume_snapshot=db_interview.resume_snapshot or "",

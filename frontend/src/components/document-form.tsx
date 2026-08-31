@@ -1,16 +1,17 @@
 import { useState, useEffect } from "react";
-import { API_BASE, getAuthHeaders } from "../lib/api";
+import { API_BASE, getAuthHeaders, INTERVIEW_MODES, type InterviewMode } from "../lib/api";
 import { Spinner } from "./ui/spinner";
 import type { ResumeListItem } from "../hooks/useResume";
 
 const MAX_CHARS = 15000;
 
 interface DocumentFormProps {
-  onSubmit: (jobRole: string, resumeText: string, jdText: string, resumeId?: string) => Promise<void>;
+  onSubmit: (jobRole: string, resumeText: string, jdText: string, resumeId?: string, interviewMode?: InterviewMode) => Promise<void>;
 }
 
 export function DocumentForm({ onSubmit }: DocumentFormProps) {
   const [jobRole, setJobRole] = useState("");
+  const [interviewMode, setInterviewMode] = useState<InterviewMode>("MIXED");
   const [mode, setMode] = useState<"select" | "paste">("select");
   const [resumes, setResumes] = useState<ResumeListItem[]>([]);
   const [selectedResumeId, setSelectedResumeId] = useState<string>("");
@@ -56,9 +57,9 @@ export function DocumentForm({ onSubmit }: DocumentFormProps) {
     setError(null);
     try {
       if (mode === "select") {
-        await onSubmit(jobRole, "", jdText, selectedResumeId);
+        await onSubmit(jobRole, "", jdText, selectedResumeId, interviewMode);
       } else {
-        await onSubmit(jobRole, resumeText, jdText);
+        await onSubmit(jobRole, resumeText, jdText, undefined, interviewMode);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Processing failed");
@@ -81,6 +82,23 @@ export function DocumentForm({ onSubmit }: DocumentFormProps) {
           required
           className="w-full px-4 py-3 rounded-xl bg-neutral-900/80 border border-neutral-700 text-neutral-100 text-sm placeholder-neutral-600 focus:outline-none focus:border-pink-500/50 focus:ring-1 focus:ring-pink-500/20 transition-all"
         />
+      </div>
+
+      <div>
+        <label className="block text-xs font-bold uppercase tracking-[0.2em] text-neutral-400 mb-2">
+          Interview Mode
+        </label>
+        <select
+          value={interviewMode}
+          onChange={(e) => setInterviewMode(e.target.value as InterviewMode)}
+          className="w-full px-4 py-3 rounded-xl bg-neutral-900/80 border border-neutral-700 text-neutral-100 text-sm focus:outline-none focus:border-pink-500/50 focus:ring-1 focus:ring-pink-500/20 transition-all"
+        >
+          {INTERVIEW_MODES.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label} — {m.description}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Resume source selection */}

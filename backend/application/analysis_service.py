@@ -1,6 +1,7 @@
 import logging
 
 from domain.interview import Interview
+from application.strategies.factory import InterviewStrategyFactory
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +57,16 @@ class AnalysisService:
                 "jd_match": None,
             }
 
+        # Resolve strategy for mode-specific evaluation
+        strategy = InterviewStrategyFactory.get(interview.interview_mode)
+
         interview_context = {
             "resume_text": interview.resume_snapshot,
             "jd_text": interview.jd_snapshot,
             "job_role": interview.job_role,
             "questions": questions_meta,
             "answers": answers_meta,
+            "strategy": strategy,
         }
 
         return await self._llm.generate_analysis(interview_context)

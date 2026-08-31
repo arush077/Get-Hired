@@ -7,6 +7,7 @@ import {
   getResults,
   type ResultItem,
   type Analysis,
+  type InterviewMode,
 } from "../lib/api";
 import { getUser } from "../lib/auth";
 
@@ -36,7 +37,7 @@ export function useInterview() {
   const tts = useTTS();
 
   const start = useCallback(
-    async (jobRole: string, resumeText: string, jdText: string, resumeId?: string) => {
+    async (jobRole: string, resumeText: string, jdText: string, resumeId?: string, interviewMode?: InterviewMode) => {
       setLoading(true);
       setError(null);
       try {
@@ -46,6 +47,7 @@ export function useInterview() {
           resumeText: resumeId ? undefined : resumeText,
           resumeId: resumeId,
           jdText,
+          interviewMode,
         });
         setInterviewId(data.interview_id);
         setQuestion(data.question);

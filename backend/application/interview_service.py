@@ -2,6 +2,7 @@ import logging
 from uuid import UUID
 
 from domain.interview import Interview
+from domain.interview_mode import InterviewMode
 from domain.question import Question, QuestionType
 from domain.answer import Answer, AnswerStatus
 from domain.interview_state import InterviewState
@@ -11,6 +12,7 @@ from application.llm_service import LLMService
 from application.rag_service import RAGService
 from application.topic_planner import build_topic_plan
 from application.question_planner import QuestionPlanner, PlannerContext, MAX_QUESTIONS_PER_TOPIC
+from application.strategies.factory import InterviewStrategyFactory
 from application.timing import Timer, StepTimer
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,7 @@ class InterviewService:
         job_role: str,
         jd_text: str,
         total_questions: int = 10,
+        interview_mode: InterviewMode = InterviewMode.MIXED,
         user_id: UUID | None = None,
         resume_id: str | None = None,
         resume_text: str | None = None,
@@ -57,11 +60,15 @@ class InterviewService:
             user_id=user_id,
             candidate_name=candidate_name,
             job_role=job_role,
+            interview_mode=interview_mode,
             total_questions=total_questions,
             resume_id=resolved_resume_id,
             resume_snapshot=resume_text,
             jd_snapshot=jd_text,
         )
+
+        # Resolve strategy for this interview mode
+        strategy = InterviewStrategyFactory.get(interview_mode)
 
         # ONE LLM call: build topic plan with primary questions
         async with Timer("build_topic_plan").measure() as t:
@@ -71,6 +78,7 @@ class InterviewService:
                 job_role=job_role,
                 llm=self._llm,
                 total_questions=total_questions,
+                strategy=strategy,
             )
         logger.info("[INTERVIEW] Topic plan built in %.2fs: %d topics", t.elapsed, len(topic_plan))
 
@@ -120,6 +128,9 @@ class InterviewService:
 
         context = self._build_context(interview)
 
+        # Resolve strategy for this interview mode
+        strategy = InterviewStrategyFactory.get(interview.interview_mode)
+
         # ONE LLM call: classify + decide + generate follow-up
         async with Timer("classify_and_decide").measure() as t:
             result = await self._llm.classify_and_decide(
@@ -134,6 +145,7 @@ class InterviewService:
                 topics_remaining=[t.label for t in context.unvisited_topics],
                 interview_history=context.previous_qa,
                 previously_asked_questions=context.previous_questions,
+                strategy=strategy,
             )
         timer.step("classify_and_decide", t.elapsed)
 

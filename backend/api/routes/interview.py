@@ -30,6 +30,7 @@ async def start_interview(
             job_role=payload.job_role,
             jd_text=payload.jd_text,
             total_questions=payload.total_questions,
+            interview_mode=payload.interview_mode,
             user_id=user_id,
             resume_id=payload.resume_id,
             resume_text=payload.resume_text,
@@ -43,6 +44,7 @@ async def start_interview(
         total_questions=interview.total_questions,
         question=question.text,
         question_index=0,
+        interview_mode=interview.interview_mode.value,
     )
 
 

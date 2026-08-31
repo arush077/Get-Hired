@@ -28,6 +28,7 @@ class InterviewModel(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     candidate_name = Column(String(255), nullable=False)
     job_role = Column(String(255), nullable=False)
+    interview_mode = Column(String(50), nullable=False, default="MIXED")
     status = Column(String(50), nullable=False, default="CREATED")
     resume_id = Column(UUID(as_uuid=True), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True)
     current_question_index = Column(Integer, nullable=False, default=0)
