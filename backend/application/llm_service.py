@@ -258,45 +258,158 @@ class LLMService:
                 "clarification_text": None,
             }
 
-    async def generate_analysis(self, transcript: str) -> dict:
+    async def generate_analysis(self, interview_context: dict) -> dict:
+        """Generate structured analysis from rich interview context.
+
+        Args:
+            interview_context: {
+                "resume_text": str,
+                "jd_text": str,
+                "job_role": str,
+                "questions": [{"index": int, "text": str, "type": str, "topic_label": str, "topic_source": str}],
+                "answers": [{"index": int, "transcript": str, "answer_status": str | None}],
+            }
+        """
+        questions = interview_context["questions"]
+        answers = interview_context["answers"]
+        resume_text = interview_context["resume_text"]
+        jd_text = interview_context["jd_text"]
+        job_role = interview_context["job_role"]
+
+        qa_lines = []
+        for q in questions:
+            idx = q["index"]
+            a = next((a for a in answers if a["index"] == idx), None)
+            a_text = a["transcript"] if a and a["transcript"] else "(no answer captured)"
+            a_status = a["answer_status"] if a else "unknown"
+            qa_lines.append(
+                f"Q{idx + 1} [{q['type']}] (topic: {q['topic_label']} / {q['topic_source']}):\n"
+                f"  Question: {q['text']}\n"
+                f"  Answer ({a_status}): {a_text}"
+            )
+
+        qa_block = "\n\n".join(qa_lines)
+
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "You are an expert interview evaluator. "
-                    "Analyze the completed interview below and provide a structured evaluation.\n\n"
-                    "RULES:\n"
-                    "- Evaluate ONLY what the candidate actually demonstrated in their answers.\n"
-                    "- Do not assume skills not demonstrated.\n"
-                    "- Do not invent candidate experience.\n"
-                    "- Judge answers in the context of the questions asked.\n"
-                    "- Evaluate the interview as a whole, not each answer independently.\n"
-                    "- Look for consistency across answers.\n"
-                    "- Penalize extremely vague, incomplete, repetitive, or off-topic answers.\n"
-                    "- Reward specific examples, clear reasoning, structured answers, and relevant details.\n"
+                    "You are an expert interview evaluator. Analyze the completed interview "
+                    "and provide a detailed structured evaluation.\n\n"
+
+                    "INPUT: You receive the candidate's resume, the target job description, "
+                    "and the full interview transcript with question types, topics, and answer statuses.\n\n"
+
+                    "EVALUATION RULES:\n"
+                    "- Evaluate ONLY what the candidate actually demonstrated.\n"
+                    "- Do not assume skills not demonstrated or invent experience.\n"
+                    "- Judge answers in context of the specific questions asked.\n"
+                    "- Evaluate the interview as a whole for patterns.\n"
+                    "- Penalize vague, incomplete, repetitive, or off-topic answers.\n"
+                    "- Reward specific examples, clear reasoning, structured answers.\n"
                     "- Do not require every answer to contain a measurable metric.\n"
-                    "- Do not penalize lack of professional experience; evaluate the quality of examples provided.\n\n"
-                    "SCORING FACTORS (use internally, do not expose separately):\n"
-                    "- Relevance: Did the candidate answer what was asked?\n"
-                    "- Clarity: Were answers understandable and structured?\n"
-                    "- Specificity: Concrete details and examples?\n"
-                    "- Depth: Reasoning vs shallow answers?\n"
-                    "- Evidence: Claims supported by actual experience?\n"
-                    "- Communication: Clear explanation of ideas?\n"
-                    "- Consistency: Reasonably consistent across the interview?\n\n"
-                    'Return ONLY valid JSON: {"overall_score": int, "strengths": [str, str], '
-                    '"areas_to_improve": [str, str]}\n'
-                    "- overall_score: integer 0-100\n"
-                    "- strengths: 2-4 concise points\n"
-                    "- areas_to_improve: 2-4 concise points\n"
-                    "- Keep each point short (one sentence).\n"
-                    "- Do not return markdown or explanations outside the JSON."
+                    "- For recurring patterns: only report if visible in 2+ answers.\n"
+                    "- For JD match: compare demonstrated skills against JD requirements.\n\n"
+
+                    "OUTPUT SCHEMA (return ONLY valid JSON):\n"
+                    "{\n"
+                    '  "overall_score": int (0-100),\n'
+                    '  "dimensions": {\n'
+                    '    "technical_depth": int (0-100),\n'
+                    '    "correctness": int (0-100),\n'
+                    '    "specificity": int (0-100),\n'
+                    '    "clarity": int (0-100),\n'
+                    '    "communication": int (0-100)\n'
+                    "  },\n"
+                    '  "strengths": [str, str], (2-4 recurring strengths grounded in actual answers)\n'
+                    '  "areas_to_improve": [str, str], (2-4 areas grounded in actual answers)\n'
+                    '  "recurring_patterns": [str, str], (patterns visible across multiple answers — only if truly recurring)\n'
+                    '  "question_feedback": [\n'
+                    "    {\n"
+                    '      "question_number": int (1-based),\n'
+                    '      "score": int (0-100),\n'
+                    '      "what_went_well": str,\n'
+                    '      "what_was_missing": str,\n'
+                    '      "how_to_improve": str\n'
+                    "    }\n"
+                    "  ],\n"
+                    '  "recommendations": [str, str], (2-3 actionable, specific practice suggestions)\n'
+                    '  "jd_match": {\n'
+                    '    "strengths": [str, str], (where candidate meets JD requirements — with evidence)\n'
+                    '    "gaps": [str, str] (where candidate lacks JD requirements — with evidence)\n'
+                    "  }\n"
+                    "}\n\n"
+
+                    "DIMENSION GUIDELINES:\n"
+                    "- technical_depth: Understanding of concepts, not just naming tools\n"
+                    "- correctness: Accuracy of technical claims and approaches\n"
+                    "- specificity: Concrete examples, metrics, details vs vague statements\n"
+                    "- clarity: How well answers are structured and explained\n"
+                    "- communication: Overall clarity, conciseness, and flow of responses\n\n"
+
+                    "PER-QUESTION FEEDBACK:\n"
+                    "- Reference the actual question and actual answer\n"
+                    "- Be specific, not generic\n"
+                    "- Score reflects how well that particular answer addressed the question\n\n"
+
+                    "RECOMMENDATIONS:\n"
+                    "- Must be concrete and practiceable\n"
+                    "- Based on the actual recurring weaknesses identified\n"
+                    "- Example: 'Practice explaining X by structuring answers as: problem → approach → trade-off → result'\n\n"
+
+                    "JD MATCH:\n"
+                    "- Compare what the candidate demonstrated against the JD requirements\n"
+                    "- Cite specific evidence from their answers\n"
+                    "- Do not simply repeat the JD text"
                 ),
             },
             {
                 "role": "user",
-                "content": f"Interview Transcript:\n\n{transcript}",
+                "content": (
+                    f"Job Role: {job_role}\n\n"
+                    f"=== CANDIDATE RESUME ===\n{resume_text}\n\n"
+                    f"=== JOB DESCRIPTION ===\n{jd_text}\n\n"
+                    f"=== INTERVIEW TRANSCRIPT ===\n\n{qa_block}"
+                ),
             },
         ]
-        raw = await self._chat(messages, max_tokens=1024)
-        return self._parse_json(raw)
+
+        raw = await self._chat(messages, max_tokens=4096)
+        try:
+            data = self._parse_json(raw)
+
+            # Clamp scores
+            data["overall_score"] = max(0, min(100, int(data.get("overall_score", 0))))
+            if "dimensions" in data and isinstance(data["dimensions"], dict):
+                data["dimensions"] = {
+                    k: max(0, min(100, int(v)))
+                    for k, v in data["dimensions"].items()
+                }
+
+            # Ensure required fields
+            data.setdefault("dimensions", {})
+            data.setdefault("strengths", [])
+            data.setdefault("areas_to_improve", [])
+            data.setdefault("recurring_patterns", [])
+            data.setdefault("question_feedback", [])
+            data.setdefault("recommendations", [])
+            data.setdefault("jd_match", None)
+
+            # Clamp per-question scores
+            for qf in data.get("question_feedback", []):
+                if isinstance(qf, dict):
+                    qf["score"] = max(0, min(100, int(qf.get("score", 0))))
+
+            return data
+        except (ValueError, KeyError) as e:
+            logger.warning("[LLM] generate_analysis parse failed: %s", e)
+            return {
+                "overall_score": 0,
+                "dimensions": {},
+                "strengths": [],
+                "areas_to_improve": ["Analysis generation failed. Please retry."],
+                "recurring_patterns": [],
+                "question_feedback": [],
+                "recommendations": [],
+                "jd_match": None,
+            }

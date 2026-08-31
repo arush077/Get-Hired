@@ -16,19 +16,42 @@ export interface AnswerResponse {
   next_question_index?: number;
   total_questions?: number;
   is_clarification?: boolean;
+  next_action?: "FOLLOW_UP" | "NEW_TOPIC" | "CLARIFY";
   analysis?: Analysis;
 }
 
 export interface Analysis {
   overall_score: number;
+  dimensions: Record<string, number>;
   strengths: string[];
   areas_to_improve: string[];
+  recurring_patterns: string[];
+  question_feedback: QuestionFeedback[];
+  recommendations: string[];
+  jd_match: JdMatch | null;
+}
+
+export interface QuestionFeedback {
+  question_number: number;
+  score: number;
+  what_went_well: string;
+  what_was_missing: string;
+  how_to_improve: string;
+}
+
+export interface JdMatch {
+  strengths: string[];
+  gaps: string[];
 }
 
 export interface ResultItem {
   question_index: number;
   question: string;
   answer: string;
+  question_type?: string;
+  topic_label?: string;
+  topic_source?: string;
+  answer_status?: string;
 }
 
 export interface ResultsResponse {
@@ -76,7 +99,7 @@ export async function startInterview(params: {
     candidate_name: params.candidateName,
     job_role: params.jobRole,
     jd_text: params.jdText,
-    total_questions: 10,
+    total_questions: 8,
   };
 
   if (params.resumeId) {

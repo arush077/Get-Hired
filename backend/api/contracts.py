@@ -59,16 +59,50 @@ class AnswerRequest(BaseModel):
     transcript: str
 
 
+class QuestionFeedback(BaseModel):
+    question_number: int
+    score: int = Field(ge=0, le=100)
+    what_went_well: str
+    what_was_missing: str
+    how_to_improve: str
+
+
+class JdMatch(BaseModel):
+    strengths: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+
+
 class AnalysisResult(BaseModel):
-    overall_score: int
-    strengths: list[str]
-    areas_to_improve: list[str]
+    overall_score: int = Field(ge=0, le=100)
+    dimensions: dict[str, int] = Field(default_factory=dict)
+    strengths: list[str] = Field(default_factory=list)
+    areas_to_improve: list[str] = Field(default_factory=list)
+    recurring_patterns: list[str] = Field(default_factory=list)
+    question_feedback: list[QuestionFeedback] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+    jd_match: JdMatch | None = None
 
     @model_validator(mode="before")
     @classmethod
-    def coerce_score(cls, data):
-        if isinstance(data, dict) and isinstance(data.get("overall_score"), float):
-            data["overall_score"] = round(data["overall_score"])
+    def coerce_and_compat(cls, data):
+        if isinstance(data, dict):
+            if isinstance(data.get("overall_score"), float):
+                data["overall_score"] = round(data["overall_score"])
+            for dim in (data.get("dimensions") or {}).values():
+                if isinstance(dim, float):
+                    data["dimensions"] = {
+                        k: round(v) for k, v in data["dimensions"].items()
+                    }
+            if "dimensions" not in data:
+                data["dimensions"] = {}
+            if "recurring_patterns" not in data:
+                data["recurring_patterns"] = []
+            if "question_feedback" not in data:
+                data["question_feedback"] = []
+            if "recommendations" not in data:
+                data["recommendations"] = []
+            if "jd_match" not in data:
+                data["jd_match"] = None
         return data
 
 
@@ -81,6 +115,7 @@ class AnswerResponse(BaseModel):
     next_question_index: int | None = None
     total_questions: int | None = None
     is_clarification: bool = False
+    next_action: str | None = None
     analysis: AnalysisResult | None = None
 
 
@@ -88,6 +123,10 @@ class QuestionResult(BaseModel):
     question_index: int
     question: str
     answer: str
+    question_type: str | None = None
+    topic_label: str | None = None
+    topic_source: str | None = None
+    answer_status: str | None = None
 
 
 class InterviewResultResponse(BaseModel):

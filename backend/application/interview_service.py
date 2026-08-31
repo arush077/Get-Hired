@@ -169,6 +169,7 @@ class InterviewService:
                 "next_question_index": interview.current_question_index,
                 "total_questions": interview.total_questions,
                 "is_clarification": True,
+                "next_action": "CLARIFY",
                 "analysis": None,
             }
 
@@ -197,10 +198,8 @@ class InterviewService:
                     question_text = next_topic.primary_question
                     q_type = QuestionType.PRIMARY
                 else:
-                    # No more topics — complete
-                    interview.status = InterviewState.COMPLETED
-                    is_complete = True
-                    question_text = None
+                    # No more topics — generate fallback question if budget remains
+                    question_text = "Can you tell me more about your experience?"
                     q_type = QuestionType.PRIMARY
             elif enforced.get("question"):
                 # FOLLOW_UP: question was generated in the unified call
@@ -267,6 +266,7 @@ class InterviewService:
             "next_question_index": interview.current_question_index if not is_complete else None,
             "total_questions": interview.total_questions,
             "is_clarification": False,
+            "next_action": enforced["next_action"] if not is_complete else None,
             "analysis": interview.analysis,
         }
 
@@ -275,14 +275,21 @@ class InterviewService:
         if not interview:
             return None
 
+        topic_map = self._build_topic_map(interview)
+
         results = []
         for i, question in enumerate(interview.questions):
             answer = interview.answers.get(i)
+            topic_label, topic_source = topic_map.get(i, ("", ""))
             results.append(
                 {
                     "question_index": i,
                     "question": question.text,
                     "answer": answer.transcript if answer else "(no answer captured)",
+                    "question_type": question.question_type.value,
+                    "topic_label": topic_label,
+                    "topic_source": topic_source,
+                    "answer_status": answer.answer_status.value if answer and answer.answer_status else None,
                 }
             )
 
@@ -292,6 +299,32 @@ class InterviewService:
             "results": results,
             "analysis": interview.analysis,
         }
+
+    def _build_topic_map(self, interview: Interview) -> dict[int, tuple[str, str]]:
+        """Map question index -> (topic_label, topic_source)."""
+        topic_map: dict[int, tuple[str, str]] = {}
+        if not interview.topic_plan:
+            return topic_map
+
+        sorted_topics = sorted(interview.topic_plan, key=lambda t: t.priority)
+        q_index = 0
+        for topic in sorted_topics:
+            if q_index < len(interview.questions):
+                topic_map[q_index] = (topic.label, topic.source)
+                q_index += 1
+                follow_ups = max(0, (topic.questions_asked or 0) - 1)
+                for _ in range(follow_ups):
+                    if q_index < len(interview.questions):
+                        topic_map[q_index] = (topic.label, topic.source)
+                        q_index += 1
+
+        while q_index < len(interview.questions):
+            if sorted_topics:
+                last_topic = sorted_topics[-1]
+                topic_map[q_index] = (last_topic.label, last_topic.source)
+            q_index += 1
+
+        return topic_map
 
     def _get_current_topic(self, interview: Interview) -> TopicEntry | None:
         """Get the current active topic from the topic plan."""

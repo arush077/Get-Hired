@@ -26,12 +26,13 @@ async def build_topic_plan(
         llm: LLMService instance.
         total_questions: Number of questions to plan for.
     """
+    request_count = min(total_questions + 3, MAX_TOPICS)
     raw_topics = await _extract_topics(
         resume_text=resume_text,
         jd_text=jd_text,
         job_role=job_role,
         llm=llm,
-        count=min(total_questions, MAX_TOPICS),
+        count=request_count,
     )
 
     topic_plan = [
@@ -74,7 +75,7 @@ async def _extract_topics(
                 "OUTPUT FORMAT — return ONLY valid JSON:\n"
                 '{"topics": [{"id": "...", "label": "...", "source": "...", "priority": N, "primary_question": "..."}]}\n\n'
                 "RULES:\n"
-                "- Extract 6-8 topics representing concrete, interviewable subjects.\n"
+                f"- Generate at least {count} topics, ideally up to {count + 2}.\n"
                 "- Each topic MUST belong to a specific source entity from the resume: "
                 "a work experience (company name), a project name, education, or certification.\n"
                 "- The 'source' field MUST be the exact entity name from the resume "
@@ -90,7 +91,7 @@ async def _extract_topics(
                 "- topic id: short snake_case identifier (e.g., 'uber_pagination', 'mergepilot_architecture')\n"
                 "- label: 5-15 word description of the interviewable subject\n"
                 "- question: 15-35 words, specific and grounded in resume evidence\n"
-                f"- At most {count} topics\n"
+                "- source: REQUIRED — must be a specific entity name from the resume, never empty\n"
             ),
         },
         {
@@ -145,7 +146,7 @@ async def _extract_topics(
         return await _retry_extract(resume_text, jd_text, job_role, llm, count)
 
     result.sort(key=lambda t: -t["priority"])
-    return result[:count]
+    return result
 
 
 async def _retry_extract(
