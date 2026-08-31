@@ -59,30 +59,34 @@ class InterviewService:
             job_role=job_role,
             total_questions=total_questions,
             resume_id=resolved_resume_id,
+            resume_snapshot=resume_text,
+            jd_snapshot=jd_text,
         )
 
-        await self._rag.ingest_documents(
-            resume_text=resume_text,
-            jd_text=jd_text,
-            interview_id=str(interview.id),
-        )
+        # ONE LLM call: build topic plan with primary questions
+        async with Timer("build_topic_plan").measure() as t:
+            topic_plan = await build_topic_plan(
+                resume_text=resume_text,
+                jd_text=jd_text,
+                job_role=job_role,
+                llm=self._llm,
+                total_questions=total_questions,
+            )
+        logger.info("[INTERVIEW] Topic plan built in %.2fs: %d topics", t.elapsed, len(topic_plan))
 
-        topic_plan = await build_topic_plan(
-            chunks=self._rag._last_chunks if hasattr(self._rag, '_last_chunks') else [],
-            job_role=job_role,
-            llm=self._llm,
-            rag=self._rag,
-            total_questions=total_questions,
-        )
         interview.topic_plan = topic_plan
         interview.current_topic_id = topic_plan[0].id if topic_plan else None
 
         self._planner.reset_embeddings()
 
-        context = self._build_context(interview)
-        question_text, q_type = await self._planner.generate_hr_question(
-            context, self._llm
-        )
+        # Use first topic's pre-generated primary question
+        first_topic = topic_plan[0] if topic_plan else None
+        if first_topic:
+            question_text = first_topic.primary_question
+            q_type = QuestionType.PRIMARY
+        else:
+            question_text = await self._llm.generate_hr_question(candidate_name, job_role, "introductory")
+            q_type = QuestionType.HR
 
         interview.questions.append(
             Question(text=question_text, question_type=q_type, order=0)
@@ -116,19 +120,22 @@ class InterviewService:
 
         context = self._build_context(interview)
 
-        # Get cached topic chunks (application-level cache, no RAG retrieval)
-        cached_chunks = self._planner.get_cached_chunks(str(interview.id), interview.current_topic_id)
-
-        # Unified LLM call: classify + decide + generate next question/clarification
-        async with Timer("classify_and_generate").measure() as t:
-            result = await self._planner.classify_and_generate(
-                context=context,
-                question=current_q.text if current_q else "",
-                answer=transcript,
-                cached_chunks=cached_chunks,
-                llm=self._llm,
+        # ONE LLM call: classify + decide + generate follow-up
+        async with Timer("classify_and_decide").measure() as t:
+            result = await self._llm.classify_and_decide(
+                resume_text=interview.resume_snapshot,
+                jd_text=interview.jd_snapshot,
+                job_role=interview.job_role,
+                current_topic_label=current_topic.label if current_topic else "",
+                current_topic_source=current_topic.source if current_topic else "",
+                current_question=current_q.text if current_q else "",
+                candidate_answer=transcript,
+                questions_on_topic=current_topic.questions_asked if current_topic else 0,
+                topics_remaining=[t.label for t in context.unvisited_topics],
+                interview_history=context.previous_qa,
+                previously_asked_questions=context.previous_questions,
             )
-        timer.step("classify_and_generate", t.elapsed)
+        timer.step("classify_and_decide", t.elapsed)
 
         # Python enforces hard rules
         enforced = self._planner.apply_hard_rules(
@@ -165,7 +172,7 @@ class InterviewService:
                 "analysis": None,
             }
 
-        # Handle NEW_TOPIC — exhaust current topic
+        # Handle NEW_TOPIC
         if enforced["next_action"] == "NEW_TOPIC" and current_topic:
             if current_topic.status != TopicStatus.EXHAUSTED:
                 current_topic.status = TopicStatus.EXHAUSTED
@@ -181,58 +188,53 @@ class InterviewService:
         # Generate next question if budget allows
         is_complete = False
         if interview.answered_count < interview.total_questions:
-            # Advance to next topic if needed
             if enforced["next_action"] == "NEW_TOPIC":
-                next_topic_id = self._planner.advance_topic(
-                    interview.topic_plan, interview.current_topic_id
-                )
-                interview.current_topic_id = next_topic_id
-
-            new_topic = self._get_current_topic(interview)
-
-            # For NEW_TOPIC: need separate question generation (classify already done)
-            # For FOLLOW_UP: question was already generated in the unified call
-            if enforced["next_action"] == "NEW_TOPIC":
-                # Ensure topic has cached RAG chunks
-                topic_chunks = await self._ensure_topic_chunks(
-                    str(interview.id), new_topic, self._rag
-                )
-
-                async with Timer("generate_question").measure() as t:
-                    question_text, q_type = await self._planner.generate_question_for_topic(
-                        context=self._build_context(interview),
-                        topic_chunks=topic_chunks,
-                        llm=self._llm,
-                    )
-                timer.step("generate_question", t.elapsed)
+                # Use planner to select next topic (prefers LLM suggestion, falls back to priority)
+                suggested_id = enforced.get("next_topic_id")
+                next_topic = self._planner.select_topic(interview.topic_plan, suggested_id)
+                if next_topic:
+                    interview.current_topic_id = next_topic.id
+                    question_text = next_topic.primary_question
+                    q_type = QuestionType.PRIMARY
+                else:
+                    # No more topics — complete
+                    interview.status = InterviewState.COMPLETED
+                    is_complete = True
+                    question_text = None
+                    q_type = QuestionType.PRIMARY
             elif enforced.get("question"):
                 # FOLLOW_UP: question was generated in the unified call
                 question_text = enforced["question"]
                 q_type = QuestionType.FOLLOW_UP
             elif interview.answered_count < 2:
-                # HR question: no question in unified call, generate separately
+                # HR question: generate separately (no RAG needed)
+                variant = "introductory" if interview.answered_count == 0 else "motivational"
                 async with Timer("generate_hr_question").measure() as t:
-                    question_text, q_type = await self._planner.generate_hr_question(
-                        self._build_context(interview), self._llm
+                    question_text = await self._llm.generate_hr_question(
+                        candidate_name=interview.candidate_name,
+                        job_role=interview.job_role,
+                        variant=variant,
                     )
+                q_type = QuestionType.HR
                 timer.step("generate_hr_question", t.elapsed)
             else:
-                # Fallback: should not happen
+                # Fallback
                 question_text = "Can you tell me more about your experience?"
                 q_type = QuestionType.PRIMARY
 
-            # Dedup + embed question
-            async with Timer("dedup_and_embed").measure() as t:
-                question_text, q_type, question_emb = await self._planner.dedup_and_cache_question(
-                    question_text, q_type, self._rag
-                )
-            timer.step("dedup_and_embed", t.elapsed)
+            if question_text:
+                # Dedup + embed question
+                async with Timer("dedup_and_embed").measure() as t:
+                    question_text, q_type, question_emb = await self._planner.dedup_and_cache_question(
+                        question_text, q_type, self._rag
+                    )
+                timer.step("dedup_and_embed", t.elapsed)
 
-            new_index = len(interview.questions)
-            interview.questions.append(
-                Question(text=question_text, question_type=q_type, order=new_index)
-            )
-            interview.advance()
+                new_index = len(interview.questions)
+                interview.questions.append(
+                    Question(text=question_text, question_type=q_type, order=new_index)
+                )
+                interview.advance()
         else:
             interview.status = InterviewState.COMPLETED
             is_complete = True
@@ -267,53 +269,6 @@ class InterviewService:
             "is_clarification": False,
             "analysis": interview.analysis,
         }
-
-    async def _ensure_topic_chunks(
-        self, interview_id: str, topic: TopicEntry | None, rag: RAGService
-    ) -> list[str]:
-        """Retrieve and cache topic RAG chunks if not already cached.
-
-        Uses topic.chunk_ids for direct lookup. Falls back to vector search
-        only if chunk_ids are empty (legacy topics).
-        """
-        if not topic:
-            return []
-        cached = self._planner.get_cached_chunks(interview_id, topic.id)
-        if cached is not None:
-            return cached
-
-        chunks = []
-
-        if topic.chunk_ids:
-            try:
-                async with Timer("topic_chunk_lookup").measure() as t:
-                    raw_chunks = await rag.get_chunks_by_ids(topic.chunk_ids)
-                    chunks = [c.content for c in raw_chunks]
-                logger.info(
-                    "[TOPIC_CACHE] Retrieved %d chunks for topic '%s' via chunk_ids in %.2fs",
-                    len(chunks), topic.label, t.elapsed,
-                )
-            except Exception as e:
-                logger.warning("[TOPIC_CACHE] chunk_ids lookup failed: %s", e)
-
-        if not chunks:
-            try:
-                async with Timer("topic_rag_retrieval").measure() as t:
-                    raw_chunks = await rag.retrieve(
-                        query=topic.label,
-                        interview_id=interview_id,
-                        top_k=3,
-                    )
-                    chunks = [c.content for c in raw_chunks]
-                logger.info(
-                    "[TOPIC_CACHE] Retrieved %d chunks for topic '%s' via vector search in %.2fs",
-                    len(chunks), topic.label, t.elapsed,
-                )
-            except Exception:
-                chunks = []
-
-        self._planner.cache_chunks(interview_id, topic.id, chunks)
-        return chunks
 
     async def get_results(self, interview_id: UUID) -> dict | None:
         interview = await self._repository.get(interview_id)

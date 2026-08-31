@@ -9,7 +9,6 @@ from domain.topic import TopicEntry, TopicStatus
 logger = logging.getLogger(__name__)
 
 MAX_QUESTIONS_PER_TOPIC = 2
-MAX_GENERATION_RETRIES = 2
 DEDUP_THRESHOLD = 0.85
 
 
@@ -32,70 +31,10 @@ class QuestionPlanner:
 
     def __init__(self):
         self._asked_embeddings: list[np.ndarray] = []
-        self._topic_chunk_cache: dict[tuple[str, str], list[str]] = {}
-        self._doc_ids_cache: dict[str, list] = {}
 
     def reset_embeddings(self):
         """Reset per-interview embedding cache."""
         self._asked_embeddings = []
-
-    def get_cached_chunks(self, interview_id: str, topic_id: str | None) -> list[str] | None:
-        """Get cached RAG chunks for a topic. Returns None if not cached."""
-        if not topic_id:
-            return []
-        return self._topic_chunk_cache.get((interview_id, topic_id))
-
-    def cache_chunks(self, interview_id: str, topic_id: str, chunks: list[str]):
-        """Cache RAG chunks for a topic."""
-        self._topic_chunk_cache[(interview_id, topic_id)] = chunks
-
-    def get_cached_doc_ids(self, interview_id: str) -> list | None:
-        """Get cached document IDs for an interview. Returns None if not cached."""
-        return self._doc_ids_cache.get(interview_id)
-
-    def cache_doc_ids(self, interview_id: str, doc_ids: list):
-        """Cache document IDs for an interview."""
-        self._doc_ids_cache[interview_id] = doc_ids
-
-    async def classify_and_generate(
-        self,
-        context: PlannerContext,
-        question: str,
-        answer: str,
-        cached_chunks: list[str] | None,
-        llm,
-    ) -> dict:
-        """Unified LLM call: classify + decide + generate question for same-topic turns.
-
-        For same-topic follow-up and clarification, this is the ONLY LLM call.
-        For NEW_TOPIC, returns decision only — Python handles topic selection + separate generation.
-        """
-        questions_on_topic = context.current_topic.questions_asked if context.current_topic else 0
-        topics_remaining = [t.label for t in context.unvisited_topics]
-
-        # For same-topic turns, we can generate the follow-up question in the same call
-        # For NEW_TOPIC, don't generate question — Python selects topic first
-        should_generate = True
-        question_type = "FOLLOW_UP"
-
-        if context.questions_answered < 2:
-            # HR questions are simple enough to generate separately (no RAG needed)
-            # But classify first, then generate HR question
-            should_generate = False
-
-        return await llm.classify_and_generate_next(
-            job_role=context.job_role,
-            current_question=question,
-            candidate_answer=answer,
-            current_topic=context.current_topic.label if context.current_topic else "",
-            questions_on_topic=questions_on_topic,
-            topics_remaining=topics_remaining,
-            context_chunks=cached_chunks if cached_chunks is not None else [],
-            interview_history=context.previous_qa,
-            previously_asked_questions=context.previous_questions,
-            should_generate_question=should_generate,
-            question_type=question_type,
-        )
 
     def apply_hard_rules(
         self,
@@ -149,37 +88,25 @@ class QuestionPlanner:
             return available[0].id
         return None
 
-    async def generate_question_for_topic(
+    def select_topic(
         self,
-        context: PlannerContext,
-        topic_chunks: list[str],
-        llm,
-    ) -> tuple[str, QuestionType]:
-        """Generate a PRIMARY question for a new topic using cached chunks."""
-        q_type = QuestionType.PRIMARY
+        topic_plan: list[TopicEntry],
+        suggested_id: str | None = None,
+    ) -> TopicEntry | None:
+        """Select next topic, preferring LLM's suggestion if valid.
 
-        question_text = await llm.generate_primary_question(
-            job_role=context.job_role,
-            search_angle=context.current_topic.label if context.current_topic else context.job_role,
-            context_chunks=topic_chunks,
-            previously_asked_questions=context.previous_questions,
-        )
+        Falls back to priority order if suggestion is invalid.
+        """
+        available = {t.id: t for t in topic_plan if t.status == TopicStatus.AVAILABLE}
 
-        return question_text, q_type
+        if suggested_id and suggested_id in available:
+            return available[suggested_id]
 
-    async def generate_hr_question(
-        self,
-        context: PlannerContext,
-        llm,
-    ) -> tuple[str, QuestionType]:
-        """Generate an HR question (no RAG needed)."""
-        variant = "introductory" if context.questions_answered == 0 else "motivational"
-        question_text = await llm.generate_hr_question(
-            candidate_name=context.candidate_name,
-            job_role=context.job_role,
-            variant=variant,
-        )
-        return question_text, QuestionType.HR
+        # Fallback: highest priority (lowest number) available topic
+        if available:
+            return min(available.values(), key=lambda t: t.priority)
+
+        return None
 
     async def dedup_and_cache_question(
         self,
@@ -191,16 +118,13 @@ class QuestionPlanner:
 
         Reuses the dedup embedding for caching — no duplicate Jina call.
         """
-        # Embed the question once for both dedup and caching
         new_emb = await self._embed_question(question_text, rag)
 
-        # Dedup check
         if new_emb is not None and self._is_duplicate(new_emb):
             logger.warning(
                 "[PLANNER] Duplicate question detected, but using it as fallback",
             )
 
-        # Cache the embedding
         if new_emb is not None:
             self._asked_embeddings.append(new_emb)
 

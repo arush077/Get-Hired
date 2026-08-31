@@ -1,37 +1,34 @@
 import json
 import logging
 
-import numpy as np
-
 from domain.topic import TopicEntry, TopicStatus
 
 logger = logging.getLogger(__name__)
 
-MERGE_THRESHOLD = 0.85
 MAX_TOPICS = 8
 
 
 async def build_topic_plan(
-    chunks: list[dict],
+    resume_text: str,
+    jd_text: str,
     job_role: str,
     llm,
-    rag,
     total_questions: int,
 ) -> list[TopicEntry]:
-    """Build a topic plan ONCE at interview start.
+    """Build topic plan with primary questions from full Resume + JD.
 
-    Uses a single LLM call to extract topics from chunk metadata,
-    then Python-side embedding similarity to merge duplicates.
+    ONE LLM call. No RAG. No chunking. No embeddings.
 
     Args:
-        chunks: List of {"id": str, "content": str, "document_type": str} from ingestion.
-        job_role: The target job role.
+        resume_text: Full resume text, ideally section-structured.
+        jd_text: Full job description.
+        job_role: Target job role.
         llm: LLMService instance.
-        rag: RAGService instance.
         total_questions: Number of questions to plan for.
     """
     raw_topics = await _extract_topics(
-        chunks=chunks,
+        resume_text=resume_text,
+        jd_text=jd_text,
         job_role=job_role,
         llm=llm,
         count=min(total_questions, MAX_TOPICS),
@@ -39,65 +36,71 @@ async def build_topic_plan(
 
     topic_plan = [
         TopicEntry(
-            id=f"topic_{i}",
-            label=label,
-            priority=i + 1,
+            id=t["id"],
+            label=t["label"],
+            source=t["source"],
+            primary_question=t["primary_question"],
+            priority=t["priority"],
             status=TopicStatus.AVAILABLE,
-            chunk_ids=chunk_ids,
         )
-        for i, (label, chunk_ids) in enumerate(raw_topics)
+        for t in raw_topics
     ]
-
-    topic_plan = await _merge_duplicate_topics(topic_plan, rag)
 
     logger.info(
         "[TOPIC_PLAN] Built plan with %d topics: %s",
         len(topic_plan),
-        [t.label for t in topic_plan],
+        [(t.label, t.source) for t in topic_plan],
     )
     return topic_plan
 
 
 async def _extract_topics(
-    chunks: list[dict],
+    resume_text: str,
+    jd_text: str,
     job_role: str,
     llm,
     count: int,
-) -> list[tuple[str, list[str]]]:
-    """LLM call: extract topics with associated chunk IDs.
+) -> list[dict]:
+    """LLM call: extract topics with provenance and primary questions.
 
-    Returns list of (label, chunk_ids) tuples.
+    Returns list of {id, label, source, priority, primary_question} dicts.
     """
-    chunk_summary = "\n".join(
-        f"[{c['id']}] ({c['document_type']}) {c['content'][:300]}"
-        for c in chunks[:50]
-    )
-
     messages = [
         {
             "role": "system",
             "content": (
-                "You are an expert interview planner. Given document chunks from a resume and job description, "
-                "extract interview topics.\n\n"
+                "You are an expert interview planner. Given a candidate's resume and a job description, "
+                "create a focused interview plan.\n\n"
+                "OUTPUT FORMAT — return ONLY valid JSON:\n"
+                '{"topics": [{"id": "...", "label": "...", "source": "...", "priority": N, "primary_question": "..."}]}\n\n'
                 "RULES:\n"
-                "- Extract topics that represent concrete, interviewable subjects.\n"
-                "- Merge topics that represent the SAME interviewable subject, even if wording differs.\n"
-                "- Do NOT merge topics from the same project that are independently useful.\n"
-                "- Rank by relevance to the job role.\n"
-                "- Each topic should be a concise, specific, interviewable subject (3-10 words).\n"
-                "- Avoid vague categories like 'skills' or 'projects'.\n"
-                f"- Return at most {count} topics.\n"
-                "- Each topic MUST reference 1-3 chunk IDs from the provided list.\n\n"
-                "Return ONLY valid JSON: "
-                '{"topics": [{"label": "topic1", "chunk_ids": ["chunk_id_1", ...]}, ...]}'
+                "- Extract 6-8 topics representing concrete, interviewable subjects.\n"
+                "- Each topic MUST belong to a specific source entity from the resume: "
+                "a work experience (company name), a project name, education, or certification.\n"
+                "- The 'source' field MUST be the exact entity name from the resume "
+                "(e.g., 'Uber Software Engineer', 'MergePilot', 'AcadAssist', 'Education').\n"
+                "- NEVER mix facts from different projects, jobs, or resume sections. "
+                "A question about MergePilot must only use MergePilot facts.\n"
+                "- Merge topics that represent the SAME interviewable subject.\n"
+                "- Rank by relevance to the job role (10=highest, 1=lowest).\n"
+                "- Each topic gets ONE primary question that is specific, grounded in the resume, "
+                "and uses concrete details (project names, tools, metrics).\n"
+                "- Do NOT invent tools, technologies, metrics, or responsibilities not in the resume.\n"
+                "- Do NOT combine technologies from different projects unless the resume explicitly states they were used together.\n"
+                "- topic id: short snake_case identifier (e.g., 'uber_pagination', 'mergepilot_architecture')\n"
+                "- label: 5-15 word description of the interviewable subject\n"
+                "- question: 15-35 words, specific and grounded in resume evidence\n"
+                f"- At most {count} topics\n"
             ),
         },
         {
             "role": "user",
             "content": (
                 f"Job Role: {job_role}\n\n"
-                f"Document Chunks:\n{chunk_summary}\n\n"
-                f"Extract {count} deduplicated, ranked interview topics with chunk IDs."
+                f"=== CANDIDATE RESUME ===\n{resume_text}\n\n"
+                f"=== JOB DESCRIPTION ===\n{jd_text}\n\n"
+                f"Create an interview plan with at most {count} topics. "
+                "Return ONLY valid JSON."
             ),
         },
     ]
@@ -106,84 +109,105 @@ async def _extract_topics(
     data = llm._parse_json(raw)
 
     topics = data.get("topics", [])
-    valid_chunk_ids = {c["id"] for c in chunks}
+    if not isinstance(topics, list) or len(topics) == 0:
+        logger.warning("[TOPIC_PLAN] LLM returned no topics, retrying with stricter prompt")
+        return await _retry_extract(resume_text, jd_text, job_role, llm, count)
 
-    if isinstance(topics, list) and len(topics) > 0:
-        result = []
-        for t in topics:
-            if isinstance(t, dict):
-                label = t.get("label", "").strip()
-                raw_ids = t.get("chunk_ids", [])
-                chunk_ids = [cid for cid in raw_ids if cid in valid_chunk_ids][:3]
-            else:
-                label = str(t).strip()
-                chunk_ids = []
-            if label and len(label) > 2:
-                result.append((label, chunk_ids))
-        if result:
-            return result[:count]
-
-    # Fallback: extract any quoted strings as labels with empty chunk_ids
-    import re
-    matches = re.findall(r'"([^"]{3,80})"', raw)
-    if matches:
-        return [(m, []) for m in matches[:count]]
-
-    return [(f"{job_role} experience", []), ("technical skills", []), ("projects", [])]
-
-
-async def _merge_duplicate_topics(
-    topics: list[TopicEntry],
-    rag,
-) -> list[TopicEntry]:
-    """Merge topics with high embedding similarity.
-
-    Uses Python embedding similarity as a safety net for topics the LLM
-    failed to merge. Unions chunk_ids on merge.
-    """
-    if len(topics) <= 1:
-        return topics
-
-    embed_inputs = [t.label for t in topics]
-
-    try:
-        embeddings = await rag.get_embeddings(embed_inputs, task="retrieval.query")
-    except Exception as e:
-        logger.warning("[TOPIC_PLAN] Embedding merge failed, skipping: %s", e)
-        return topics
-
-    embed_matrix = np.array(embeddings, dtype=np.float32)
-    norms = np.linalg.norm(embed_matrix, axis=1, keepdims=True)
-    norms = np.where(norms == 0, 1, norms)
-    embed_matrix = embed_matrix / norms
-    sim_matrix = np.dot(embed_matrix, embed_matrix.T)
-
-    merged_indices: set[int] = set()
-    result: list[TopicEntry] = []
-
-    for i in range(len(topics)):
-        if i in merged_indices:
+    result = []
+    seen_ids = set()
+    for t in topics:
+        if not isinstance(t, dict):
             continue
-        survivor = topics[i]
-        for j in range(i + 1, len(topics)):
-            if j in merged_indices:
-                continue
-            if sim_matrix[i][j] >= MERGE_THRESHOLD:
-                merged_indices.add(j)
-                survivor.chunk_ids = list(set(survivor.chunk_ids + topics[j].chunk_ids))
-                logger.info(
-                    "[TOPIC_PLAN] Merged '%s' into '%s' (sim=%.3f)",
-                    topics[j].label, survivor.label, sim_matrix[i][j],
-                )
-        result.append(survivor)
+        tid = t.get("id", "").strip()
+        label = t.get("label", "").strip()
+        source = t.get("source", "").strip()
+        primary_question = t.get("primary_question", "").strip()
+        priority = t.get("priority", 5)
 
-    for i, t in enumerate(result):
-        t.priority = i + 1
+        if not label or not primary_question or not source:
+            continue
+        if tid in seen_ids:
+            continue
+        if not isinstance(priority, int) or priority < 1 or priority > 10:
+            priority = 5
 
-    if len(result) < len(topics):
-        logger.info(
-            "[TOPIC_PLAN] Merge reduced %d topics → %d",
-            len(topics), len(result),
-        )
+        seen_ids.add(tid)
+        result.append({
+            "id": tid,
+            "label": label,
+            "source": source,
+            "priority": priority,
+            "primary_question": primary_question,
+        })
 
-    return result
+    if not result:
+        logger.warning("[TOPIC_PLAN] No valid topics after parsing, retrying")
+        return await _retry_extract(resume_text, jd_text, job_role, llm, count)
+
+    result.sort(key=lambda t: -t["priority"])
+    return result[:count]
+
+
+async def _retry_extract(
+    resume_text: str,
+    jd_text: str,
+    job_role: str,
+    llm,
+    count: int,
+) -> list[dict]:
+    """One retry with stricter instructions."""
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Return ONLY a JSON object. No markdown. No explanation.\n"
+                f"Return at most {count} topics.\n"
+                '{"topics": [{"id": "string", "label": "string", "source": "string", '
+                '"priority": 1-10, "primary_question": "string"}]}\n'
+                "Each topic MUST have: id, label, source (entity from resume), priority, primary_question.\n"
+                "source must be a specific entity name from the resume, not 'Candidate'."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Job Role: {job_role}\n\n"
+                f"Resume:\n{resume_text}\n\n"
+                f"JD:\n{jd_text}\n\n"
+                "Return ONLY valid JSON with topics."
+            ),
+        },
+    ]
+
+    raw = await llm._chat(messages, max_tokens=2048)
+    data = llm._parse_json(raw)
+
+    topics = data.get("topics", [])
+    result = []
+    seen_ids = set()
+    for t in topics:
+        if not isinstance(t, dict):
+            continue
+        tid = t.get("id", "").strip()
+        label = t.get("label", "").strip()
+        source = t.get("source", "").strip()
+        primary_question = t.get("primary_question", "").strip()
+        priority = t.get("priority", 5)
+
+        if not label or not primary_question:
+            continue
+        if tid in seen_ids:
+            continue
+        if not source:
+            source = job_role
+
+        seen_ids.add(tid)
+        result.append({
+            "id": tid or f"topic_{len(result)}",
+            "label": label,
+            "source": source,
+            "priority": priority if isinstance(priority, int) else 5,
+            "primary_question": primary_question,
+        })
+
+    return result[:count]

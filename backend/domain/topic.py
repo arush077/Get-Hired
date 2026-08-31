@@ -13,8 +13,9 @@ class TopicStatus(str, Enum):
 class TopicEntry:
     id: str
     label: str
+    source: str
+    primary_question: str
     priority: int
     status: TopicStatus = TopicStatus.AVAILABLE
     questions_asked: int = 0
     exhaustion_reason: str | None = None
-    chunk_ids: list[str] = field(default_factory=list)

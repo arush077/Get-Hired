@@ -15,6 +15,8 @@ class Interview:
     job_role: str = ""
     status: InterviewState = field(default_factory=lambda: InterviewState.CREATED)
     resume_id: UUID | None = None
+    resume_snapshot: str = ""
+    jd_snapshot: str = ""
     questions: list[Question] = field(default_factory=list)
     answers: dict[int, Answer] = field(default_factory=dict)
     current_question_index: int = 0

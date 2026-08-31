@@ -8,6 +8,7 @@ import {
   type ResultItem,
   type Analysis,
 } from "../lib/api";
+import { getUser } from "../lib/auth";
 
 export type InterviewState =
   | "documents"
@@ -40,7 +41,7 @@ export function useInterview() {
       setError(null);
       try {
         const data = await apiStart({
-          candidateName: "Candidate",
+          candidateName: getUser()?.name || "Candidate",
           jobRole,
           resumeText: resumeId ? undefined : resumeText,
           resumeId: resumeId,

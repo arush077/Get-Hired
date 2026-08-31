@@ -19,16 +19,6 @@ CONCISENESS_INSTRUCTION = (
     "Do not list topics to discuss — ask a single focused question. "
 )
 
-GROUNDING_RULES = (
-    "CRITICAL RULES:\n"
-    "- Use ONLY the Resume/JD context provided below.\n"
-    "- NEVER invent candidate experience, projects, technologies, responsibilities, or achievements.\n"
-    "- If the context mentions a specific project, role, company, or skill, ask about THAT specifically.\n"
-    "- Use concrete names from the resume (project names, company names, tools, certifications).\n"
-    "- If no relevant Resume/JD context is available, ask a general role-based question.\n"
-    "- Every question must be traceable to the provided context.\n"
-)
-
 
 class LLMService:
     def __init__(self):
@@ -139,41 +129,134 @@ class LLMService:
         ]
         return await self._generate_with_retry(messages)
 
-    async def generate_primary_question(
+    async def classify_and_decide(
         self,
+        resume_text: str,
+        jd_text: str,
         job_role: str,
-        search_angle: str,
-        context_chunks: list[str],
+        current_topic_label: str,
+        current_topic_source: str,
+        current_question: str,
+        candidate_answer: str,
+        questions_on_topic: int,
+        topics_remaining: list[str],
+        interview_history: list[dict],
         previously_asked_questions: list[str],
-    ) -> str:
-        chunks_text = "\n".join(f"- {c}" for c in context_chunks)
-        asked_text = "\n".join(f"- {q}" for q in previously_asked_questions) if previously_asked_questions else "none yet"
+        next_topic_id: str | None = None,
+    ) -> dict:
+        """ONE LLM call: classify answer + decide action + generate follow-up if needed.
+
+        Returns:
+            {
+                "answer_status": "ANSWERED" | "PARTIAL_ANSWER" | "DOES_NOT_KNOW" | "NEEDS_CLARIFICATION",
+                "next_action": "FOLLOW_UP" | "NEW_TOPIC" | "CLARIFY" | "END",
+                "next_topic_id": str | null,
+                "reason": "...",
+                "question": "..." (when next_action=FOLLOW_UP),
+                "clarification_text": "..." (only when next_action=CLARIFY)
+            }
+        """
+        remaining_text = ", ".join(topics_remaining[:8]) if topics_remaining else "none remaining"
+        asked_text = "\n".join(f"- {q}" for q in previously_asked_questions[-5:]) if previously_asked_questions else "none yet"
+        history_text = ""
+        for i, qa in enumerate(interview_history[-3:]):
+            history_text += f"Q{i+1}: {qa['question']}\nA{i+1}: {qa['answer']}\n\n"
 
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "You are an expert technical interviewer conducting a personalized interview. "
-                    "Generate ONE interview question grounded in the candidate's actual resume/JD.\n\n"
-                    + GROUNDING_RULES
-                    + f"This question should explore: {search_angle}.\n"
-                    f"Previously asked questions (DO NOT repeat or rephrase these):\n{asked_text}\n"
-                    + CONCISENESS_INSTRUCTION
-                    + 'Return ONLY valid JSON: {"question": "..."}'
+                    "You are an expert interview analyst. Analyze the candidate's answer and decide what to do next.\n\n"
+
+                    "STEP 1: Classify the answer status:\n"
+                    "- ANSWERED: Candidate provided a meaningful answer with substance\n"
+                    "- PARTIAL_ANSWER: Candidate started answering but it's incomplete or lacks detail\n"
+                    "- DOES_NOT_KNOW: Candidate explicitly says they don't know, have no experience, weren't involved, or someone else handled it\n"
+                    "- NEEDS_CLARIFICATION: Candidate is asking what the question means or asking for clarification\n\n"
+
+                    "STEP 2: Decide the next action:\n"
+                    "- FOLLOW_UP: Answer is incomplete or interesting — ask a deeper follow-up on the SAME topic. "
+                    "Generate the follow-up question in the 'question' field.\n"
+                    "- NEW_TOPIC: Answer is sufficient, topic is explored, or candidate doesn't know. Move on.\n"
+                    "- CLARIFY: Candidate didn't understand. Generate a genuine rephrasing in 'clarification_text'.\n"
+                    "- END: Interview is complete.\n\n"
+
+                    "PROVENANCE RULES — CRITICAL:\n"
+                    f"- The current topic is about: {current_topic_source}\n"
+                    "- ONLY use facts from the Resume/JD context provided below.\n"
+                    "- NEVER invent candidate experience, projects, technologies, responsibilities, or achievements.\n"
+                    "- NEVER mix facts from different projects, jobs, or resume sections.\n"
+                    "- If the context mentions a specific tool or metric for THIS topic, you may reference it.\n"
+                    "- Do NOT reference tools, metrics, or responsibilities from OTHER projects or experiences.\n\n"
+
+                    "RULES:\n"
+                    "- If answer_status is DOES_NOT_KNOW, next_action MUST be NEW_TOPIC.\n"
+                    "- If answer_status is NEEDS_CLARIFICATION, next_action MUST be CLARIFY.\n"
+                    f"- If questions_on_topic >= 2, next_action MUST be NEW_TOPIC (hard cap).\n"
+                    "- Prefer topic diversity. Don't stay on the same topic unless the follow-up is truly valuable.\n"
+                    "- IMPORTANT: 'no' or 'did not' in a substantive answer is NOT DOES_NOT_KNOW.\n"
+                    "- For FOLLOW_UP: generate a question (15-35 words) grounded in the resume evidence for this topic.\n"
+                    "- For CLARIFY: genuinely rephrase the question. Do NOT just prepend 'Let me rephrase that.'.\n"
+                    "- For NEW_TOPIC: suggest next_topic_id from available topics if possible.\n\n"
+
+                    f"Current topic: {current_topic_label} ({current_topic_source})\n"
+                    f"Questions asked on this topic: {questions_on_topic}\n"
+                    f"Available topics: {remaining_text}\n"
+                    f"Previously asked questions:\n{asked_text}\n\n"
+
+                    'Return ONLY valid JSON: {"answer_status": "...", "next_action": "...", "next_topic_id": null, '
+                    '"reason": "...", "question": null, "clarification_text": null}\n'
+                    "- question: filled only when next_action is FOLLOW_UP\n"
+                    "- clarification_text: filled only when next_action is CLARIFY\n"
+                    "- next_topic_id: suggested topic for NEW_TOPIC, or null\n"
+                    "- reason: one sentence for debugging"
                 ),
             },
             {
                 "role": "user",
                 "content": (
                     f"Job Role: {job_role}\n\n"
-                    f"Relevant Resume/JD Context:\n{chunks_text}\n\n"
-                    f"Generate a question about: {search_angle}\n"
-                    "Use specific details from the context above. "
-                    "Do NOT invent experience not mentioned in the context."
+                    f"=== CANDIDATE RESUME ===\n{resume_text}\n\n"
+                    f"=== JOB DESCRIPTION ===\n{jd_text}\n\n"
+                    f"Current Question: {current_question}\n"
+                    f"Candidate Answer: {candidate_answer}\n\n"
+                    f"Recent Interview History:\n{history_text}"
                 ),
             },
         ]
-        return await self._generate_with_retry(messages)
+
+        raw = await self._chat(messages, max_tokens=1024)
+        try:
+            data = self._parse_json(raw)
+            answer_status = data.get("answer_status", "ANSWERED")
+            next_action = data.get("next_action", "NEW_TOPIC")
+            clarification_text = data.get("clarification_text")
+            question = data.get("question")
+            next_topic_id = data.get("next_topic_id")
+
+            if answer_status not in ("ANSWERED", "PARTIAL_ANSWER", "DOES_NOT_KNOW", "NEEDS_CLARIFICATION"):
+                answer_status = "ANSWERED"
+            if next_action not in ("FOLLOW_UP", "NEW_TOPIC", "CLARIFY", "END"):
+                next_action = "NEW_TOPIC"
+
+            return {
+                "answer_status": answer_status,
+                "next_action": next_action,
+                "next_topic_id": next_topic_id,
+                "reason": data.get("reason", ""),
+                "question": question if next_action == "FOLLOW_UP" else None,
+                "clarification_text": clarification_text if next_action == "CLARIFY" else None,
+            }
+        except (ValueError, KeyError) as e:
+            logger.warning("[LLM] classify_and_decide parse failed: %s | raw: %r", e, raw[:200])
+            return {
+                "answer_status": "ANSWERED",
+                "next_action": "NEW_TOPIC",
+                "next_topic_id": None,
+                "reason": f"Parse failed: {e}",
+                "question": None,
+                "clarification_text": None,
+            }
 
     async def generate_analysis(self, transcript: str) -> dict:
         messages = [
@@ -217,140 +300,3 @@ class LLMService:
         ]
         raw = await self._chat(messages, max_tokens=1024)
         return self._parse_json(raw)
-
-    async def classify_and_generate_next(
-        self,
-        job_role: str,
-        current_question: str,
-        candidate_answer: str,
-        current_topic: str,
-        questions_on_topic: int,
-        topics_remaining: list[str],
-        context_chunks: list[str],
-        interview_history: list[dict],
-        previously_asked_questions: list[str],
-        should_generate_question: bool = True,
-        question_type: str = "FOLLOW_UP",
-    ) -> dict:
-        """Unified LLM call: classify answer + decide action + optionally generate question.
-
-        For same-topic follow-up: returns answer_status, next_action, AND question.
-        For NEW_TOPIC: returns answer_status, next_action only (Python handles topic selection).
-        For CLARIFY: returns answer_status, next_action, AND clarification_text.
-
-        Returns:
-            {
-                "answer_status": "ANSWERED" | "PARTIAL_ANSWER" | "DOES_NOT_KNOW" | "NEEDS_CLARIFICATION",
-                "next_action": "FOLLOW_UP" | "NEW_TOPIC" | "CLARIFY",
-                "reason": "...",
-                "question": "..." (when next_action=FOLLOW_UP and should_generate_question=True),
-                "clarification_text": "..." (only when next_action=CLARIFY)
-            }
-        """
-        chunks_text = "\n".join(f"- {c}" for c in context_chunks) if context_chunks else "No context available"
-        remaining_text = ", ".join(topics_remaining[:5]) if topics_remaining else "none remaining"
-        asked_text = "\n".join(f"- {q}" for q in previously_asked_questions[-5:]) if previously_asked_questions else "none yet"
-        history_text = ""
-        for i, qa in enumerate(interview_history[-3:]):
-            history_text += f"Q{i+1}: {qa['question']}\nA{i+1}: {qa['answer']}\n\n"
-
-        if should_generate_question:
-            if question_type == "FOLLOW_UP":
-                action_instruction = (
-                    "- FOLLOW_UP: Answer is incomplete or interesting — ask a deeper follow-up on the SAME topic.\n"
-                    "  You MUST also generate the follow-up question in the 'question' field.\n"
-                )
-            else:
-                action_instruction = (
-                    "- FOLLOW_UP: Answer is incomplete or interesting — ask a deeper follow-up on the SAME topic.\n"
-                    "  You MUST also generate the follow-up question in the 'question' field.\n"
-                )
-            output_format = (
-                'Return ONLY valid JSON: {"answer_status": "...", "next_action": "...", "reason": "...", '
-                '"question": "...", "clarification_text": null}\n'
-                "- question: the next interview question when next_action is FOLLOW_UP.\n"
-                "- clarification_text: a genuine rephrasing of the question when next_action is CLARIFY, otherwise null.\n"
-                "- reason: for internal debugging only, keep it short (one sentence)."
-            )
-        else:
-            action_instruction = (
-                "- FOLLOW_UP: Answer is incomplete or interesting — ask a deeper follow-up on the SAME topic.\n"
-                "- NEW_TOPIC: Answer is complete, topic is exhausted, or candidate doesn't know. Move to a DIFFERENT topic.\n"
-            )
-            output_format = (
-                'Return ONLY valid JSON: {"answer_status": "...", "next_action": "...", "reason": "...", '
-                '"question": null, "clarification_text": null}\n'
-                "- question: leave null, Python will handle question generation.\n"
-                "- clarification_text: a genuine rephrasing of the question when next_action is CLARIFY, otherwise null.\n"
-                "- reason: for internal debugging only, keep it short (one sentence)."
-            )
-
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are an expert interview analyst. Analyze the candidate's answer and decide what to do next.\n\n"
-                    "STEP 1: Classify the answer status:\n"
-                    "- ANSWERED: Candidate provided a meaningful answer with some substance\n"
-                    "- PARTIAL_ANSWER: Candidate started answering but it's incomplete or lacks detail\n"
-                    "- DOES_NOT_KNOW: Candidate explicitly says they don't know, have no experience, weren't involved, or someone else handled it\n"
-                    "- NEEDS_CLARIFICATION: Candidate is asking what the question means or asking for clarification\n\n"
-                    "STEP 2: Decide the next action:\n"
-                    "- CLARIFY: Candidate didn't understand the question. Generate a genuine rephrasing of the question.\n"
-                    + action_instruction +
-                    "RULES:\n"
-                    "- If answer_status is DOES_NOT_KNOW, next_action MUST be NEW_TOPIC.\n"
-                    "- If answer_status is NEEDS_CLARIFICATION, next_action MUST be CLARIFY.\n"
-                    "- If questions_on_topic >= 2, next_action MUST be NEW_TOPIC (hard cap).\n"
-                    "- Prefer topic diversity. Don't stay on the same topic unless the follow-up is truly valuable.\n"
-                    "- When choosing NEW_TOPIC, prefer resume-specific topics over generic ones.\n"
-                    "- IMPORTANT: A candidate saying 'no' or 'did not' in the middle of a substantive answer is NOT DOES_NOT_KNOW. "
-                    "Look at the full meaning of the answer.\n\n"
-                    f"Current topic: {current_topic}\n"
-                    f"Questions already asked on this topic: {questions_on_topic}\n"
-                    f"Topics available: {remaining_text}\n"
-                    f"Previously asked questions:\n{asked_text}\n\n"
-                    + output_format
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Job Role: {job_role}\n\n"
-                    f"Current Question: {current_question}\n"
-                    f"Candidate Answer: {candidate_answer}\n\n"
-                    f"Resume/JD Context:\n{chunks_text}\n\n"
-                    f"Recent Interview History:\n{history_text}"
-                ),
-            },
-        ]
-
-        raw = await self._chat(messages, max_tokens=1024)
-        try:
-            data = self._parse_json(raw)
-            answer_status = data.get("answer_status", "ANSWERED")
-            next_action = data.get("next_action", "NEW_TOPIC")
-            clarification_text = data.get("clarification_text")
-            question = data.get("question")
-
-            if answer_status not in ("ANSWERED", "PARTIAL_ANSWER", "DOES_NOT_KNOW", "NEEDS_CLARIFICATION"):
-                answer_status = "ANSWERED"
-            if next_action not in ("FOLLOW_UP", "NEW_TOPIC", "CLARIFY"):
-                next_action = "NEW_TOPIC"
-
-            return {
-                "answer_status": answer_status,
-                "next_action": next_action,
-                "reason": data.get("reason", ""),
-                "question": question,
-                "clarification_text": clarification_text if next_action == "CLARIFY" else None,
-            }
-        except (ValueError, KeyError) as e:
-            logger.warning("[LLM] classify_and_generate_next parse failed: %s | raw: %r", e, raw[:200])
-            return {
-                "answer_status": "ANSWERED",
-                "next_action": "NEW_TOPIC",
-                "reason": f"Parse failed: {e}",
-                "question": None,
-                "clarification_text": None,
-            }

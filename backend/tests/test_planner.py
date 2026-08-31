@@ -10,6 +10,19 @@ from domain.interview_state import InterviewState
 from application.question_planner import QuestionPlanner, PlannerContext, MAX_QUESTIONS_PER_TOPIC, DEDUP_THRESHOLD
 
 
+def _topic(**kwargs):
+    """Helper to create TopicEntry with required fields."""
+    defaults = {
+        "id": "topic_0",
+        "label": "Test Topic",
+        "source": "Test Source",
+        "primary_question": "Test question?",
+        "priority": 1,
+    }
+    defaults.update(kwargs)
+    return TopicEntry(**defaults)
+
+
 # ── Topic Planning Tests ─────────────────────────────────────────
 
 
@@ -17,45 +30,47 @@ class TestTopicPlanning:
     def test_topic_deduplication(self):
         """Similar topics should be merged into one."""
         topic_plan = [
-            TopicEntry(id="topic_0", label="Server-side pagination", priority=1),
-            TopicEntry(id="topic_1", label="95% data reduction", priority=2),
-            TopicEntry(id="topic_2", label="Replacing client-side pagination", priority=3),
+            _topic(id="topic_0", label="Server-side pagination", priority=1),
+            _topic(id="topic_1", label="95% data reduction", priority=2),
+            _topic(id="topic_2", label="Replacing client-side pagination", priority=3),
         ]
-        # After LLM dedup, these should be one topic
-        # This tests the data structure, not the LLM call
         assert len(topic_plan) == 3
         assert topic_plan[0].status == TopicStatus.AVAILABLE
 
     def test_topic_ranking(self):
         """High-value topics should have lower priority numbers."""
         topic_plan = [
-            TopicEntry(id="topic_0", label="Uber AI project", priority=1),
-            TopicEntry(id="topic_1", label="Education", priority=5),
+            _topic(id="topic_0", label="Uber AI project", priority=1),
+            _topic(id="topic_1", label="Education", priority=5),
         ]
         assert topic_plan[0].priority < topic_plan[1].priority
 
     def test_topic_order_stable_after_start(self):
         """Topic order should not change after interview starts."""
         topic_plan = [
-            TopicEntry(id="topic_0", label="Project A", priority=1),
-            TopicEntry(id="topic_1", label="Project B", priority=2),
+            _topic(id="topic_0", label="Project A", priority=1),
+            _topic(id="topic_1", label="Project B", priority=2),
         ]
         original_order = [t.id for t in topic_plan]
-        # Simulate some operations
         topic_plan[0].status = TopicStatus.ACTIVE
         topic_plan[0].questions_asked = 1
-        # Order should remain the same
         assert [t.id for t in topic_plan] == original_order
 
     def test_exhausted_topic_never_selected(self):
         """EXHAUSTED topics should not be available for selection."""
         topic_plan = [
-            TopicEntry(id="topic_0", label="Project A", priority=1, status=TopicStatus.EXHAUSTED),
-            TopicEntry(id="topic_1", label="Project B", priority=2, status=TopicStatus.AVAILABLE),
+            _topic(id="topic_0", label="Project A", priority=1, status=TopicStatus.EXHAUSTED),
+            _topic(id="topic_1", label="Project B", priority=2, status=TopicStatus.AVAILABLE),
         ]
         available = [t for t in topic_plan if t.status == TopicStatus.AVAILABLE]
         assert len(available) == 1
         assert available[0].id == "topic_1"
+
+    def test_topic_has_source_and_primary_question(self):
+        """TopicEntry should have source and primary_question fields."""
+        t = _topic(source="Uber SWE", primary_question="Why pagination?")
+        assert t.source == "Uber SWE"
+        assert t.primary_question == "Why pagination?"
 
 
 # ── Answer Handling Tests ────────────────────────────────────────
@@ -70,13 +85,13 @@ class TestAnswerHandling:
             "interview_id": "test-id",
             "job_role": "SDE-1",
             "candidate_name": "Test",
-            "current_topic": TopicEntry(id="topic_0", label="Project A", priority=1),
+            "current_topic": _topic(id="topic_0", label="Project A", priority=1),
             "questions_answered": 2,
             "total_questions": 10,
             "questions_remaining": 8,
             "unvisited_topics": [
-                TopicEntry(id="topic_1", label="Project B", priority=2),
-                TopicEntry(id="topic_2", label="Project C", priority=3),
+                _topic(id="topic_1", label="Project B", priority=2),
+                _topic(id="topic_2", label="Project C", priority=3),
             ],
             "previous_questions": ["Q1", "Q2"],
             "previous_qa": [{"question": "Q1", "answer": "A1"}],
@@ -86,9 +101,8 @@ class TestAnswerHandling:
 
     def test_detailed_answer_triggers_new_topic(self):
         """A complete answer should allow moving to new topic."""
-        topic = TopicEntry(id="topic_0", label="Project A", priority=1)
-        topic_plan = [topic, TopicEntry(id="topic_1", label="Project B", priority=2)]
-        context = self._make_context(current_topic=topic)
+        topic = _topic(id="topic_0", label="Project A", priority=1)
+        topic_plan = [topic, _topic(id="topic_1", label="Project B", priority=2)]
 
         classification = {
             "answer_status": "ANSWERED",
@@ -104,9 +118,8 @@ class TestAnswerHandling:
 
     def test_incomplete_answer_triggers_follow_up(self):
         """An incomplete answer should allow follow-up if budget permits."""
-        topic = TopicEntry(id="topic_0", label="Project A", priority=1, questions_asked=0)
-        topic_plan = [topic, TopicEntry(id="topic_1", label="Project B", priority=2)]
-        context = self._make_context(current_topic=topic, questions_remaining=8)
+        topic = _topic(id="topic_0", label="Project A", priority=1, questions_asked=0)
+        topic_plan = [topic, _topic(id="topic_1", label="Project B", priority=2)]
 
         classification = {
             "answer_status": "PARTIAL_ANSWER",
@@ -122,8 +135,8 @@ class TestAnswerHandling:
 
     def test_does_not_know_exhausts_topic(self):
         """DOES_NOT_KNOW should exhaust the topic and force NEW_TOPIC."""
-        topic = TopicEntry(id="topic_0", label="Project A", priority=1)
-        topic_plan = [topic, TopicEntry(id="topic_1", label="Project B", priority=2)]
+        topic = _topic(id="topic_0", label="Project A", priority=1)
+        topic_plan = [topic, _topic(id="topic_1", label="Project B", priority=2)]
 
         classification = {
             "answer_status": "DOES_NOT_KNOW",
@@ -139,43 +152,9 @@ class TestAnswerHandling:
         assert topic.status == TopicStatus.EXHAUSTED
         assert topic.exhaustion_reason == "DOES_NOT_KNOW"
 
-    def test_i_havent_worked_on_that_exhausts_topic(self):
-        """'I haven't worked on that' should be classified as DOES_NOT_KNOW by LLM."""
-        topic = TopicEntry(id="topic_0", label="Project A", priority=1)
-
-        classification = {
-            "answer_status": "DOES_NOT_KNOW",
-            "next_action": "NEW_TOPIC",
-            "reason": "No experience",
-            "clarification_text": None,
-        }
-
-        topic_plan = [topic, TopicEntry(id="topic_1", label="Project B", priority=2)]
-        result = self.planner.apply_hard_rules(
-            classification, topic_plan, topic, 1, 10
-        )
-        assert topic.status == TopicStatus.EXHAUSTED
-
-    def test_my_manager_handled_that_exhausts_topic(self):
-        """'My manager handled that' should exhaust topic if no useful evidence."""
-        topic = TopicEntry(id="topic_0", label="Project A", priority=1)
-
-        classification = {
-            "answer_status": "DOES_NOT_KNOW",
-            "next_action": "NEW_TOPIC",
-            "reason": "Not involved",
-            "clarification_text": None,
-        }
-
-        topic_plan = [topic, TopicEntry(id="topic_1", label="Project B", priority=2)]
-        result = self.planner.apply_hard_rules(
-            classification, topic_plan, topic, 1, 10
-        )
-        assert topic.status == TopicStatus.EXHAUSTED
-
     def test_clarification_does_not_consume_slot(self):
         """NEEDS_CLARIFICATION should force CLARIFY action."""
-        topic = TopicEntry(id="topic_0", label="Project A", priority=1)
+        topic = _topic(id="topic_0", label="Project A", priority=1)
 
         classification = {
             "answer_status": "NEEDS_CLARIFICATION",
@@ -192,9 +171,7 @@ class TestAnswerHandling:
 
     def test_real_answer_with_no_is_not_does_not_know(self):
         """A real answer containing 'no' should NOT be classified as DOES_NOT_KNOW."""
-        # This tests that the LLM prompt instructs it correctly
-        # The actual classification is done by the LLM, not by regex
-        topic = TopicEntry(id="topic_0", label="Project A", priority=1)
+        topic = _topic(id="topic_0", label="Project A", priority=1)
 
         classification = {
             "answer_status": "ANSWERED",
@@ -203,7 +180,7 @@ class TestAnswerHandling:
             "clarification_text": None,
         }
 
-        topic_plan = [topic, TopicEntry(id="topic_1", label="Project B", priority=2)]
+        topic_plan = [topic, _topic(id="topic_1", label="Project B", priority=2)]
         result = self.planner.apply_hard_rules(
             classification, topic_plan, topic, 1, 10
         )
@@ -212,7 +189,7 @@ class TestAnswerHandling:
 
     def test_partial_answer_can_get_follow_up(self):
         """Partial answer should allow follow-up if budget permits."""
-        topic = TopicEntry(id="topic_0", label="Project A", priority=1, questions_asked=0)
+        topic = _topic(id="topic_0", label="Project A", priority=1, questions_asked=0)
 
         classification = {
             "answer_status": "PARTIAL_ANSWER",
@@ -221,7 +198,7 @@ class TestAnswerHandling:
             "clarification_text": None,
         }
 
-        topic_plan = [topic, TopicEntry(id="topic_1", label="Project B", priority=2)]
+        topic_plan = [topic, _topic(id="topic_1", label="Project B", priority=2)]
         result = self.planner.apply_hard_rules(
             classification, topic_plan, topic, 2, 10
         )
@@ -237,10 +214,10 @@ class TestBudget:
 
     def test_no_follow_up_when_budget_tight(self):
         """If questions_remaining <= unvisited_topics, no follow-up allowed."""
-        topic = TopicEntry(id="topic_0", label="Project A", priority=1, questions_asked=0)
+        topic = _topic(id="topic_0", label="Project A", priority=1, questions_asked=0)
         unvisited = [
-            TopicEntry(id="topic_1", label="Project B", priority=2),
-            TopicEntry(id="topic_2", label="Project C", priority=3),
+            _topic(id="topic_1", label="Project B", priority=2),
+            _topic(id="topic_2", label="Project C", priority=3),
         ]
         topic_plan = [topic] + unvisited
 
@@ -251,7 +228,6 @@ class TestBudget:
             "clarification_text": None,
         }
 
-        # questions_remaining = 3, unvisited = 2, so follow-up not allowed
         result = self.planner.apply_hard_rules(
             classification, topic_plan, topic, 7, 10
         )
@@ -259,9 +235,9 @@ class TestBudget:
 
     def test_follow_up_allowed_when_budget_loose(self):
         """If questions_remaining > unvisited_topics, follow-up allowed."""
-        topic = TopicEntry(id="topic_0", label="Project A", priority=1, questions_asked=0)
+        topic = _topic(id="topic_0", label="Project A", priority=1, questions_asked=0)
         unvisited = [
-            TopicEntry(id="topic_1", label="Project B", priority=2),
+            _topic(id="topic_1", label="Project B", priority=2),
         ]
         topic_plan = [topic] + unvisited
 
@@ -272,7 +248,6 @@ class TestBudget:
             "clarification_text": None,
         }
 
-        # questions_remaining = 8, unvisited = 1, so follow-up allowed
         result = self.planner.apply_hard_rules(
             classification, topic_plan, topic, 2, 10
         )
@@ -280,7 +255,7 @@ class TestBudget:
 
     def test_clarification_does_not_consume_budget(self):
         """Clarification should not count against the question budget."""
-        topic = TopicEntry(id="topic_0", label="Project A", priority=1)
+        topic = _topic(id="topic_0", label="Project A", priority=1)
 
         classification = {
             "answer_status": "NEEDS_CLARIFICATION",
@@ -293,7 +268,6 @@ class TestBudget:
         result = self.planner.apply_hard_rules(
             classification, topic_plan, topic, 9, 10
         )
-        # Even with 9 answered, clarification should still work
         assert result["next_action"] == "CLARIFY"
 
 
@@ -301,7 +275,7 @@ class TestBudget:
 
 
 def _make_embedding(text: str, seed: int = 0) -> list[float]:
-    """Deterministic fake embedding: similar texts → similar vectors."""
+    """Deterministic fake embedding: similar texts -> similar vectors."""
     rng = np.random.RandomState(seed + hash(text) % 10000)
     vec = rng.randn(768).astype(np.float32)
     vec = vec / np.linalg.norm(vec)
@@ -314,8 +288,8 @@ class TestRepetition:
 
     def test_exhausted_topic_never_reselected(self):
         """Once exhausted, a topic should never be selected again."""
-        topic = TopicEntry(id="topic_0", label="Project A", priority=1, status=TopicStatus.EXHAUSTED)
-        topic_plan = [topic, TopicEntry(id="topic_1", label="Project B", priority=2)]
+        topic = _topic(id="topic_0", label="Project A", priority=1, status=TopicStatus.EXHAUSTED)
+        topic_plan = [topic, _topic(id="topic_1", label="Project B", priority=2)]
 
         available = [t for t in topic_plan if t.status == TopicStatus.AVAILABLE]
         assert len(available) == 1
@@ -325,15 +299,12 @@ class TestRepetition:
     async def test_duplicate_question_rejected_by_embedding(self):
         """Semantically duplicate questions should be caught by embedding similarity."""
         rag = AsyncMock()
-        # Craft embeddings: previous question has a vector close to the duplicate
         base = np.array([0.9] + [0.01] * 767, dtype=np.float32)
         base = base / np.linalg.norm(base)
-        # Slight perturbation to simulate near-duplicate
         dup_emb = base + np.random.RandomState(42).randn(768).astype(np.float32) * 0.01
         dup_emb = dup_emb / np.linalg.norm(dup_emb)
 
         self.planner._asked_embeddings = [base]
-
         rag.get_embeddings = AsyncMock(return_value=[dup_emb.tolist()])
 
         result = await self.planner._check_duplicate("any text", rag)
@@ -343,14 +314,12 @@ class TestRepetition:
     async def test_different_question_accepted_by_embedding(self):
         """Different questions should pass the embedding check."""
         rag = AsyncMock()
-        # Previous question vector
         prev_emb = np.array([1.0] + [0.0] * 767, dtype=np.float32)
         prev_emb = prev_emb / np.linalg.norm(prev_emb)
         self.planner._asked_embeddings = [prev_emb]
 
-        # Completely different question (orthogonal vector)
         diff_emb = np.array([0.0] * 768, dtype=np.float32)
-        diff_emb[400] = 1.0  # orthogonal
+        diff_emb[400] = 1.0
 
         rag.get_embeddings = AsyncMock(return_value=[diff_emb.tolist()])
 
@@ -378,18 +347,10 @@ class TestRepetition:
         result = await self.planner._check_duplicate("New question?", rag)
         assert result is False
 
-    def test_generation_retry_limit(self):
-        """Generation should not retry infinitely."""
-        # This is tested implicitly by the MAX_GENERATION_RETRIES constant
-        from application.question_planner import MAX_GENERATION_RETRIES
-        assert MAX_GENERATION_RETRIES == 2
-
     def test_no_infinite_planner_loop(self):
         """The planner should not loop infinitely."""
-        # The apply_hard_rules method is deterministic and always returns
-        # It does not loop
         planner = QuestionPlanner()
-        topic = TopicEntry(id="topic_0", label="A", priority=1)
+        topic = _topic(id="topic_0", label="A", priority=1)
         classification = {
             "answer_status": "ANSWERED",
             "next_action": "FOLLOW_UP",
@@ -414,7 +375,6 @@ class TestCompletion:
         """After 10 Q&A pairs, interview should be completed."""
         from domain.answer import Answer
         interview = Interview(total_questions=10)
-        # Simulate the actual flow: submit_answer then advance
         for i in range(10):
             interview.current_question_index = i
             interview.submit_answer(Answer(transcript=f"Answer {i}"))
@@ -434,7 +394,7 @@ class TestCompletion:
     def test_clarification_before_q10_does_not_consume_q10(self):
         """Clarification at Q10 should not consume the Q10 slot."""
         planner = QuestionPlanner()
-        topic = TopicEntry(id="topic_0", label="A", priority=1)
+        topic = _topic(id="topic_0", label="A", priority=1)
 
         classification = {
             "answer_status": "NEEDS_CLARIFICATION",
@@ -457,8 +417,10 @@ class TestCompletion:
         )
 
         topic_plan = [
-            TopicEntry(id="topic_0", label="Project A", priority=1, status=TopicStatus.ACTIVE),
-            TopicEntry(id="topic_1", label="Project B", priority=2, status=TopicStatus.EXHAUSTED, chunk_ids=["c1", "c2"]),
+            _topic(id="topic_0", label="Project A", priority=1, status=TopicStatus.ACTIVE,
+                   source="Uber", primary_question="Why?"),
+            _topic(id="topic_1", label="Project B", priority=2, status=TopicStatus.EXHAUSTED,
+                   source="MergePilot", primary_question="How?"),
         ]
 
         serialized = serialize_topic_plan(topic_plan)
@@ -467,189 +429,174 @@ class TestCompletion:
         assert len(deserialized) == 2
         assert deserialized[0].label == "Project A"
         assert deserialized[0].status == TopicStatus.ACTIVE
+        assert deserialized[0].source == "Uber"
         assert deserialized[1].label == "Project B"
         assert deserialized[1].status == TopicStatus.EXHAUSTED
-        assert deserialized[1].chunk_ids == ["c1", "c2"]
+        assert deserialized[1].source == "MergePilot"
 
 
-# ── Topic Merge Tests ───────────────────────────────────────────
+# ── Topic Selection Tests ───────────────────────────────────────
 
 
-class TestTopicMerge:
-    @pytest.mark.asyncio
-    async def test_merge_reduces_duplicate_topics(self):
-        """Topics with high embedding similarity should be merged."""
-        from application.topic_planner import _merge_duplicate_topics
+class TestTopicSelection:
+    def setup_method(self):
+        self.planner = QuestionPlanner()
 
-        rag = AsyncMock()
-        t0 = TopicEntry(id="topic_0", label="fault-tolerance strategy", priority=1)
-        t1 = TopicEntry(id="topic_1", label="retries and backoff", priority=2)
-        t2 = TopicEntry(id="topic_2", label="resume builder JWT auth", priority=3)
-
-        # Make t0 and t1 have similar embeddings, t2 different
-        emb_t0 = np.array([0.9] + [0.01] * 767, dtype=np.float32)
-        emb_t0 = emb_t0 / np.linalg.norm(emb_t0)
-        emb_t1 = np.array([0.88] + [0.02] * 767, dtype=np.float32)
-        emb_t1 = emb_t1 / np.linalg.norm(emb_t1)
-        emb_t2 = np.array([0.0] * 768, dtype=np.float32)
-        emb_t2[500] = 1.0  # orthogonal
-
-        rag.get_embeddings = AsyncMock(return_value=[
-            emb_t0.tolist(), emb_t1.tolist(), emb_t2.tolist()
-        ])
-
-        result = await _merge_duplicate_topics([t0, t1, t2], rag)
-        assert len(result) == 2
-        assert result[0].label == "fault-tolerance strategy"
-        assert result[1].label == "resume builder JWT auth"
-
-    @pytest.mark.asyncio
-    async def test_merge_preserves_distinct_topics(self):
-        """Topics with low similarity should not be merged."""
-        from application.topic_planner import _merge_duplicate_topics
-
-        rag = AsyncMock()
-        t0 = TopicEntry(id="topic_0", label="pagination architecture", priority=1)
-        t1 = TopicEntry(id="topic_1", label="JWT authentication", priority=2)
-
-        emb_t0 = np.array([1.0] + [0.0] * 767, dtype=np.float32)
-        emb_t1 = np.array([0.0] * 768, dtype=np.float32)
-        emb_t1[100] = 1.0
-
-        rag.get_embeddings = AsyncMock(return_value=[
-            emb_t0.tolist(), emb_t1.tolist()
-        ])
-
-        result = await _merge_duplicate_topics([t0, t1], rag)
-        assert len(result) == 2
-
-    @pytest.mark.asyncio
-    async def test_merge_aborts_on_embedding_error(self):
-        """If embedding fails, merge should return original topics unchanged."""
-        from application.topic_planner import _merge_duplicate_topics
-
-        rag = AsyncMock()
-        rag.get_embeddings = AsyncMock(side_effect=Exception("API down"))
-
-        t0 = TopicEntry(id="topic_0", label="A", priority=1)
-        t1 = TopicEntry(id="topic_1", label="B", priority=2)
-
-        result = await _merge_duplicate_topics([t0, t1], rag)
-        assert len(result) == 2
-
-    @pytest.mark.asyncio
-    async def test_merge_combines_chunk_ids(self):
-        """Merged topics should have combined chunk_ids."""
-        from application.topic_planner import _merge_duplicate_topics
-
-        rag = AsyncMock()
-        t0 = TopicEntry(id="topic_0", label="fault tolerance", priority=1, chunk_ids=["c1", "c2"])
-        t1 = TopicEntry(id="topic_1", label="retry strategy", priority=2, chunk_ids=["c3"])
-
-        # Near-identical embeddings
-        emb = np.array([1.0] + [0.001] * 767, dtype=np.float32)
-        emb = emb / np.linalg.norm(emb)
-
-        rag.get_embeddings = AsyncMock(return_value=[emb.tolist(), emb.tolist()])
-
-        result = await _merge_duplicate_topics([t0, t1], rag)
-        assert len(result) == 1
-        assert set(result[0].chunk_ids) == {"c1", "c2", "c3"}
-
-
-# ── Regression Tests: Real Chunk Linkage ─────────────────────────
-
-
-class TestChunkLinkage:
-    @pytest.mark.asyncio
-    async def test_real_chunk_ids_attached_to_topics(self):
-        """Topics should have real chunk_ids from ingestion, not invented IDs."""
-        from application.topic_planner import _extract_topics
-
-        llm = AsyncMock()
-        llm._chat = AsyncMock(return_value=json.dumps({
-            "topics": [
-                {"label": "Pagination architecture", "chunk_ids": ["chunk-aaa", "chunk-bbb"]},
-                {"label": "JWT authentication", "chunk_ids": ["chunk-ccc"]},
-            ]
-        }))
-        llm._parse_json = MagicMock(side_effect=lambda x: json.loads(x))
-
-        chunks = [
-            {"id": "chunk-aaa", "content": "server-side pagination", "document_type": "resume"},
-            {"id": "chunk-bbb", "content": "95% data reduction", "document_type": "resume"},
-            {"id": "chunk-ccc", "content": "JWT auth in React", "document_type": "resume"},
+    def test_select_topic_prefers_llm_suggestion(self):
+        """select_topic should prefer the LLM's suggested topic if valid."""
+        topic_plan = [
+            _topic(id="uber_pagination", label="Pagination", priority=1),
+            _topic(id="mergepilot_arch", label="Architecture", priority=2),
         ]
+        result = self.planner.select_topic(topic_plan, suggested_id="mergepilot_arch")
+        assert result.id == "mergepilot_arch"
 
-        result = await _extract_topics(chunks=chunks, job_role="SDE-1", llm=llm, count=5)
-
-        assert len(result) == 2
-        assert result[0] == ("Pagination architecture", ["chunk-aaa", "chunk-bbb"])
-        assert result[1] == ("JWT authentication", ["chunk-ccc"])
-
-    @pytest.mark.asyncio
-    async def test_invalid_chunk_ids_filtered_out(self):
-        """Chunk IDs not in the original ingestion should be filtered."""
-        from application.topic_planner import _extract_topics
-
-        llm = AsyncMock()
-        llm._chat = AsyncMock(return_value=json.dumps({
-            "topics": [
-                {"label": "Topic A", "chunk_ids": ["chunk-aaa", "fake-id-999"]},
-            ]
-        }))
-        llm._parse_json = MagicMock(side_effect=lambda x: json.loads(x))
-
-        chunks = [
-            {"id": "chunk-aaa", "content": "real content", "document_type": "resume"},
+    def test_select_topic_falls_back_to_priority(self):
+        """select_topic should fall back to priority if suggestion is invalid."""
+        topic_plan = [
+            _topic(id="uber_pagination", label="Pagination", priority=1),
+            _topic(id="mergepilot_arch", label="Architecture", priority=2),
         ]
+        result = self.planner.select_topic(topic_plan, suggested_id="nonexistent")
+        assert result.id == "uber_pagination"
 
-        result = await _extract_topics(chunks=chunks, job_role="SDE-1", llm=llm, count=5)
+    def test_select_topic_skips_exhausted(self):
+        """select_topic should skip EXHAUSTED topics."""
+        topic_plan = [
+            _topic(id="t0", label="A", priority=1, status=TopicStatus.EXHAUSTED),
+            _topic(id="t1", label="B", priority=2),
+        ]
+        result = self.planner.select_topic(topic_plan)
+        assert result.id == "t1"
 
-        assert len(result) == 1
-        assert result[0] == ("Topic A", ["chunk-aaa"])
-
-    @pytest.mark.asyncio
-    async def test_merged_topics_union_chunk_ids(self):
-        """When topics merge, chunk_ids from both should be unioned."""
-        from application.topic_planner import _merge_duplicate_topics
-
-        rag = AsyncMock()
-        t0 = TopicEntry(id="t0", label="fault tolerance", priority=1, chunk_ids=["c1", "c2"])
-        t1 = TopicEntry(id="t1", label="retry strategy", priority=2, chunk_ids=["c2", "c3"])
-
-        emb = np.array([1.0] + [0.001] * 767, dtype=np.float32)
-        emb = emb / np.linalg.norm(emb)
-        rag.get_embeddings = AsyncMock(return_value=[emb.tolist(), emb.tolist()])
-
-        result = await _merge_duplicate_topics([t0, t1], rag)
-        assert len(result) == 1
-        assert set(result[0].chunk_ids) == {"c1", "c2", "c3"}
+    def test_select_topic_returns_none_when_all_exhausted(self):
+        """select_topic should return None when no topics are AVAILABLE."""
+        topic_plan = [
+            _topic(id="t0", label="A", priority=1, status=TopicStatus.EXHAUSTED),
+            _topic(id="t1", label="B", priority=2, status=TopicStatus.SKIPPED),
+        ]
+        result = self.planner.select_topic(topic_plan)
+        assert result is None
 
 
-# ── Regression Tests: RAG Retrieval Behavior ─────────────────────
+# ── Topic Status Tests ──────────────────────────────────────────
 
 
-class TestRAGRetrievalBehavior:
-    @pytest.mark.asyncio
-    async def test_same_topic_followup_zero_rag_searches(self):
-        """Same-topic follow-up should use cached chunks, not fresh RAG."""
+class TestTopicStatus:
+    def test_skipped_status_exists(self):
+        """TopicStatus should include SKIPPED."""
+        assert hasattr(TopicStatus, "SKIPPED")
+        assert TopicStatus.SKIPPED.value == "SKIPPED"
+
+    def test_skipped_serialization(self):
+        """SKIPPED status should serialize and deserialize correctly."""
+        from infrastructure.repositories.topic_serialization import (
+            serialize_topic_plan,
+            deserialize_topic_plan,
+        )
+        topic_plan = [
+            _topic(id="t0", label="A", priority=1, status=TopicStatus.SKIPPED),
+        ]
+        serialized = serialize_topic_plan(topic_plan)
+        deserialized = deserialize_topic_plan(serialized)
+        assert deserialized[0].status == TopicStatus.SKIPPED
+
+    def test_exhausted_topics_never_selected(self):
+        """EXHAUSTED topics should never appear in available list."""
+        topic_plan = [
+            _topic(id="t0", label="A", priority=1, status=TopicStatus.EXHAUSTED),
+            _topic(id="t1", label="B", priority=2, status=TopicStatus.EXHAUSTED),
+            _topic(id="t2", label="C", priority=3, status=TopicStatus.AVAILABLE),
+        ]
+        available = [t for t in topic_plan if t.status == TopicStatus.AVAILABLE]
+        assert len(available) == 1
+        assert available[0].id == "t2"
+
+
+# ── Interview Flow Tests ────────────────────────────────────────
+
+
+class TestInterviewFlow:
+    def test_q10_terminates_interview(self):
+        """Interview should terminate after Q10."""
+        from domain.answer import Answer
+        interview = Interview(total_questions=10)
+        for i in range(10):
+            interview.current_question_index = i
+            interview.submit_answer(Answer(transcript=f"Answer {i}"))
+            interview.advance()
+        assert interview.is_complete
+        assert interview.status == InterviewState.COMPLETED
+
+    def test_clarification_stays_on_same_topic(self):
+        """Clarification should not advance topic or consume question slot."""
         planner = QuestionPlanner()
-        planner.cache_chunks("int-1", "topic_0", ["cached chunk content"])
+        topic = _topic(id="t0", label="A", priority=1)
 
-        cached = planner.get_cached_chunks("int-1", "topic_0")
-        assert cached == ["cached chunk content"]
-        assert len(cached) == 1
+        classification = {
+            "answer_status": "NEEDS_CLARIFICATION",
+            "next_action": "CLARIFY",
+            "reason": "",
+            "clarification_text": "Let me rephrase that.",
+        }
 
-    @pytest.mark.asyncio
-    async def test_new_topic_uses_chunk_ids_not_vector_search(self):
-        """Topic with chunk_ids should use direct lookup, not vector search."""
-        from domain.topic import TopicEntry
-        topic = TopicEntry(id="topic_0", label="Test", priority=1, chunk_ids=["c1", "c2"])
-        assert len(topic.chunk_ids) == 2
+        result = planner.apply_hard_rules(classification, [topic], topic, 5, 10)
+        assert result["next_action"] == "CLARIFY"
+        assert topic.status == TopicStatus.AVAILABLE
+        assert topic.questions_asked == 0
+
+    def test_does_not_know_switches_topic(self):
+        """DOES_NOT_KNOW should exhaust current topic and force NEW_TOPIC."""
+        planner = QuestionPlanner()
+        topic = _topic(id="t0", label="A", priority=1)
+        other = _topic(id="t1", label="B", priority=2)
+
+        classification = {
+            "answer_status": "DOES_NOT_KNOW",
+            "next_action": "NEW_TOPIC",
+            "reason": "",
+            "clarification_text": None,
+        }
+
+        result = planner.apply_hard_rules(classification, [topic, other], topic, 3, 10)
+        assert result["next_action"] == "NEW_TOPIC"
+        assert topic.status == TopicStatus.EXHAUSTED
+        assert topic.exhaustion_reason == "DOES_NOT_KNOW"
 
 
-# ── Regression Tests: Question Dedup ─────────────────────────────
+# ── Provenance Tests ────────────────────────────────────────────
+
+
+class TestProvenance:
+    def test_topic_has_source_field(self):
+        """Every topic must have a source field."""
+        t = _topic(source="Uber Software Engineer")
+        assert t.source == "Uber Software Engineer"
+
+    def test_topic_has_primary_question(self):
+        """Every topic must have a pre-generated primary question."""
+        t = _topic(primary_question="How did you implement pagination?")
+        assert t.primary_question == "How did you implement pagination?"
+
+    def test_source_survives_serialization(self):
+        """Source field should survive serialize/deserialize round-trip."""
+        from infrastructure.repositories.topic_serialization import (
+            serialize_topic_plan,
+            deserialize_topic_plan,
+        )
+        topic_plan = [_topic(source="MergePilot", primary_question="How?")]
+        serialized = serialize_topic_plan(topic_plan)
+        deserialized = deserialize_topic_plan(serialized)
+        assert deserialized[0].source == "MergePilot"
+        assert deserialized[0].primary_question == "How?"
+
+    def test_no_chunk_ids_in_topic(self):
+        """TopicEntry should not have chunk_ids field."""
+        t = _topic()
+        assert not hasattr(t, "chunk_ids")
+
+
+# ── Question Dedup Tests ────────────────────────────────────────
 
 
 class TestQuestionDedup:
@@ -675,110 +622,32 @@ class TestQuestionDedup:
         assert new_emb is not None
 
 
-# ── Regression Tests: Topic Status ───────────────────────────────
-
-
-class TestTopicStatus:
-    def test_skipped_status_exists(self):
-        """TopicStatus should include SKIPPED."""
-        from domain.topic import TopicStatus
-        assert hasattr(TopicStatus, "SKIPPED")
-        assert TopicStatus.SKIPPED.value == "SKIPPED"
-
-    def test_skipped_serialization(self):
-        """SKIPPED status should serialize and deserialize correctly."""
-        from infrastructure.repositories.topic_serialization import (
-            serialize_topic_plan,
-            deserialize_topic_plan,
-        )
-        topic_plan = [
-            TopicEntry(id="t0", label="A", priority=1, status=TopicStatus.SKIPPED),
-        ]
-        serialized = serialize_topic_plan(topic_plan)
-        deserialized = deserialize_topic_plan(serialized)
-        assert deserialized[0].status == TopicStatus.SKIPPED
-
-    def test_exhausted_topics_never_selected(self):
-        """EXHAUSTED topics should never appear in available list."""
-        topic_plan = [
-            TopicEntry(id="t0", label="A", priority=1, status=TopicStatus.EXHAUSTED),
-            TopicEntry(id="t1", label="B", priority=2, status=TopicStatus.EXHAUSTED),
-            TopicEntry(id="t2", label="C", priority=3, status=TopicStatus.AVAILABLE),
-        ]
-        available = [t for t in topic_plan if t.status == TopicStatus.AVAILABLE]
-        assert len(available) == 1
-        assert available[0].id == "t2"
-
-
-# ── Regression Tests: Interview Flow ─────────────────────────────
-
-
-class TestInterviewFlow:
-    def test_q10_terminates_interview(self):
-        """Interview should terminate after Q10."""
-        from domain.answer import Answer
-        interview = Interview(total_questions=10)
-        for i in range(10):
-            interview.current_question_index = i
-            interview.submit_answer(Answer(transcript=f"Answer {i}"))
-            interview.advance()
-        assert interview.is_complete
-        assert interview.status == InterviewState.COMPLETED
-
-    def test_clarification_stays_on_same_topic(self):
-        """Clarification should not advance topic or consume question slot."""
-        planner = QuestionPlanner()
-        topic = TopicEntry(id="t0", label="A", priority=1)
-
-        classification = {
-            "answer_status": "NEEDS_CLARIFICATION",
-            "next_action": "CLARIFY",
-            "reason": "",
-            "clarification_text": "Let me rephrase that.",
-        }
-
-        result = planner.apply_hard_rules(classification, [topic], topic, 5, 10)
-        assert result["next_action"] == "CLARIFY"
-        assert topic.status == TopicStatus.AVAILABLE
-        assert topic.questions_asked == 0
-
-    def test_does_not_know_switches_topic(self):
-        """DOES_NOT_KNOW should exhaust current topic and force NEW_TOPIC."""
-        planner = QuestionPlanner()
-        topic = TopicEntry(id="t0", label="A", priority=1)
-        other = TopicEntry(id="t1", label="B", priority=2)
-
-        classification = {
-            "answer_status": "DOES_NOT_KNOW",
-            "next_action": "NEW_TOPIC",
-            "reason": "",
-            "clarification_text": None,
-        }
-
-        result = planner.apply_hard_rules(classification, [topic, other], topic, 3, 10)
-        assert result["next_action"] == "NEW_TOPIC"
-        assert topic.status == TopicStatus.EXHAUSTED
-        assert topic.exhaustion_reason == "DOES_NOT_KNOW"
-
-
-# ── Regression Tests: Topic Plan Compactness ─────────────────────
+# ── Topic Plan Compactness Tests ────────────────────────────────
 
 
 class TestTopicPlanCompactness:
-    def test_topic_plan_no_source_context(self):
-        """TopicEntry should not have source_context field."""
-        topic = TopicEntry(id="t0", label="Test", priority=1)
-        assert not hasattr(topic, "source_context")
+    def test_topic_plan_no_chunk_ids(self):
+        """TopicEntry should not have chunk_ids field."""
+        t = _topic()
+        assert not hasattr(t, "chunk_ids")
 
-    def test_serialization_no_source_context(self):
-        """Serialized topic plan should not contain source_context."""
+    def test_serialization_no_chunk_ids(self):
+        """Serialized topic plan should not contain chunk_ids."""
         from infrastructure.repositories.topic_serialization import serialize_topic_plan
-        topic_plan = [TopicEntry(id="t0", label="Test", priority=1)]
+        topic_plan = [_topic()]
         serialized = serialize_topic_plan(topic_plan)
-        assert "source_context" not in serialized
+        assert "chunk_ids" not in serialized
+
+    def test_serialization_has_source_and_primary_question(self):
+        """Serialized topic plan should contain source and primary_question."""
+        from infrastructure.repositories.topic_serialization import serialize_topic_plan
+        topic_plan = [_topic(source="Uber", primary_question="Why?")]
+        serialized = serialize_topic_plan(topic_plan)
+        assert '"source": "Uber"' in serialized
+        assert '"primary_question": "Why?"' in serialized
 
 
-# ── Regression Tests: Max Topics ─────────────────────────────────
+# ── Max Topics Tests ────────────────────────────────────────────
 
 
 class TestMaxTopics:
@@ -787,3 +656,23 @@ class TestMaxTopics:
         """Topic planner should enforce MAX_TOPICS=8."""
         from application.topic_planner import MAX_TOPICS
         assert MAX_TOPICS == 8
+
+
+# ── Interview Model Tests ───────────────────────────────────────
+
+
+class TestInterviewModel:
+    def test_interview_has_snapshot_fields(self):
+        """Interview should have resume_snapshot and jd_snapshot fields."""
+        interview = Interview(
+            resume_snapshot="My resume text",
+            jd_snapshot="My JD text",
+        )
+        assert interview.resume_snapshot == "My resume text"
+        assert interview.jd_snapshot == "My JD text"
+
+    def test_interview_snapshots_default_empty(self):
+        """Snapshots should default to empty string."""
+        interview = Interview()
+        assert interview.resume_snapshot == ""
+        assert interview.jd_snapshot == ""

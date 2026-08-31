@@ -32,6 +32,8 @@ class InterviewModel(Base):
     resume_id = Column(UUID(as_uuid=True), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True)
     current_question_index = Column(Integer, nullable=False, default=0)
     total_questions = Column(Integer, nullable=False, default=10)
+    resume_snapshot = Column(Text, nullable=False, default="")
+    jd_snapshot = Column(Text, nullable=False, default="")
     topic_plan = Column(Text, nullable=False, default="[]")
     current_topic_id = Column(String(255), nullable=True)
     analysis = Column(Text, nullable=True, default=None)

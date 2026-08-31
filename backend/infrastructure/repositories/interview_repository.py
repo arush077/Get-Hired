@@ -33,6 +33,8 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                     existing.job_role = interview.job_role
                     existing.status = interview.status.value
                     existing.resume_id = interview.resume_id
+                    existing.resume_snapshot = interview.resume_snapshot
+                    existing.jd_snapshot = interview.jd_snapshot
                     existing.current_question_index = interview.current_question_index
                     existing.total_questions = interview.total_questions
                     existing.topic_plan = _serialize_topic_plan(interview.topic_plan)
@@ -103,6 +105,8 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                         job_role=interview.job_role,
                         status=interview.status.value,
                         resume_id=interview.resume_id,
+                        resume_snapshot=interview.resume_snapshot,
+                        jd_snapshot=interview.jd_snapshot,
                         current_question_index=interview.current_question_index,
                         total_questions=interview.total_questions,
                         topic_plan=_serialize_topic_plan(interview.topic_plan),
@@ -204,6 +208,8 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
             job_role=db_interview.job_role,
             status=InterviewState(db_interview.status),
             resume_id=db_interview.resume_id,
+            resume_snapshot=db_interview.resume_snapshot or "",
+            jd_snapshot=db_interview.jd_snapshot or "",
             questions=domain_questions,
             answers=answers_dict,
             current_question_index=db_interview.current_question_index,
