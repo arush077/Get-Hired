@@ -54,6 +54,7 @@ async def start_interview(
 @router.get("/{interview_id}/results", response_model=InterviewResultResponse)
 async def get_results(
     interview_id: str,
+    request: Request,
     service: InterviewService = Depends(get_interview_service),
 ):
     try:
@@ -61,9 +62,17 @@ async def get_results(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid interview ID")
 
+    interview = await service.get_interview(uid)
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    user = getattr(request.state, "user", None)
+    if interview.user_id and (not user or UUID(user["id"]) != interview.user_id):
+        raise HTTPException(status_code=403, detail="Not authorized to view this interview")
+
     results = await service.get_results(uid)
     if not results:
-        raise HTTPException(status_code=404, detail="Interview not found")
+        raise HTTPException(status_code=404, detail="Interview results not available")
 
     return results
 
@@ -72,12 +81,21 @@ async def get_results(
 async def submit_answer(
     interview_id: str,
     payload: AnswerRequest,
+    request: Request,
     service: InterviewService = Depends(get_interview_service),
 ):
     try:
         uid = UUID(interview_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid interview ID")
+
+    interview = await service.get_interview(uid)
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    user = getattr(request.state, "user", None)
+    if interview.user_id and (not user or UUID(user["id"]) != interview.user_id):
+        raise HTTPException(status_code=403, detail="Not authorized to submit answers for this interview")
 
     try:
         result = await service.submit_answer(uid, payload.transcript)
