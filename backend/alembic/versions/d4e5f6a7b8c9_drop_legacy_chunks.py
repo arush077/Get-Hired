@@ -16,7 +16,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.drop_table("chunks")
+    op.execute("DROP TABLE IF EXISTS chunks CASCADE")
 
 
 def downgrade() -> None:
