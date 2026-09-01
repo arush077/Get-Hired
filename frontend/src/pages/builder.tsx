@@ -97,7 +97,29 @@ export function Builder() {
   }
 
   function handleDownload() {
-    window.print();
+    const printArea = document.getElementById("print-area");
+    if (!printArea) return;
+
+    const printWindow = window.open("", "_blank", "width=800,height=600");
+    if (!printWindow) return;
+
+    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map((el) => el.outerHTML)
+      .join("\n");
+
+    printWindow.document.write(`<!DOCTYPE html>
+<html><head><title>${resume.title || "Resume"}</title>${styles}
+<style>
+  @page { margin: 0; size: letter; }
+  body { margin: 0; padding: 0; background: #fff; }
+</style></head><body>${printArea.innerHTML}</body></html>`);
+    printWindow.document.close();
+
+    printWindow.onload = () => {
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+    };
   }
 
   function handleBack() {
@@ -170,7 +192,7 @@ export function Builder() {
 
         {/* Right: Preview */}
         <div className="flex w-1/2 flex-col">
-          <div className="flex items-center justify-between border-b border-white/[0.04] px-6 py-3 glass-header">
+          <div className="no-print flex items-center justify-between border-b border-white/[0.04] px-6 py-3 glass-header">
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{resume.title || "Untitled Resume"}</p>
             {lastSaved && (
               <span className="text-xs text-gray-500">
@@ -178,7 +200,7 @@ export function Builder() {
               </span>
             )}
           </div>
-          <div className="flex-none px-6 pt-3 pb-2 border-b border-white/[0.04]">
+          <div className="no-print flex-none px-6 pt-3 pb-2 border-b border-white/[0.04]">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-gray-500">Template</span>
             </div>
@@ -194,7 +216,7 @@ export function Builder() {
               <div id="print-area" className="rounded-2xl overflow-hidden shadow-2xl shadow-black/40">
                 <ResumePreview resume={resume} sectionOrder={sectionOrder} />
               </div>
-              <div className="border-t border-white/[0.06] pt-6 mt-6 space-y-3">
+              <div className="no-print border-t border-white/[0.06] pt-6 mt-6 space-y-3">
                 <p className="text-xs text-gray-300 text-center leading-relaxed">
                   Done editing? Get AI-powered feedback on your resume before you submit.
                 </p>
