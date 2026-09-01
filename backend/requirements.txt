@@ -8,7 +8,6 @@ alembic
 python-dotenv
 groq>=0.4.0
 httpx
-pgvector
 edge-tts
 numpy
 python-jose[cryptography]

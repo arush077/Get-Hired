@@ -33,7 +33,6 @@ app.add_middleware(
 app.add_middleware(AuthMiddleware)
 
 from api.routes.interview import router as interview_router
-from api.routes.rag import router as rag_router
 from api.routes.tts import tts_router
 from api.routes.auth import router as auth_router
 from api.routes.resume import router as resume_router
@@ -41,7 +40,6 @@ from api.routes.resume import router as resume_router
 app.include_router(auth_router)
 app.include_router(resume_router)
 app.include_router(interview_router)
-app.include_router(rag_router)
 app.include_router(tts_router)
 
 

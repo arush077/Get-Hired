@@ -298,22 +298,22 @@ class TestRepetition:
     @pytest.mark.asyncio
     async def test_duplicate_question_rejected_by_embedding(self):
         """Semantically duplicate questions should be caught by embedding similarity."""
-        rag = AsyncMock()
+        embed_fn = AsyncMock()
         base = np.array([0.9] + [0.01] * 767, dtype=np.float32)
         base = base / np.linalg.norm(base)
         dup_emb = base + np.random.RandomState(42).randn(768).astype(np.float32) * 0.01
         dup_emb = dup_emb / np.linalg.norm(dup_emb)
 
         self.planner._asked_embeddings = [base]
-        rag.get_embeddings = AsyncMock(return_value=[dup_emb.tolist()])
+        embed_fn.return_value = [dup_emb.tolist()]
 
-        result = await self.planner._check_duplicate("any text", rag)
+        result = await self.planner._check_duplicate("any text", embed_fn)
         assert result is True
 
     @pytest.mark.asyncio
     async def test_different_question_accepted_by_embedding(self):
         """Different questions should pass the embedding check."""
-        rag = AsyncMock()
+        embed_fn = AsyncMock()
         prev_emb = np.array([1.0] + [0.0] * 767, dtype=np.float32)
         prev_emb = prev_emb / np.linalg.norm(prev_emb)
         self.planner._asked_embeddings = [prev_emb]
@@ -321,30 +321,30 @@ class TestRepetition:
         diff_emb = np.array([0.0] * 768, dtype=np.float32)
         diff_emb[400] = 1.0
 
-        rag.get_embeddings = AsyncMock(return_value=[diff_emb.tolist()])
+        embed_fn.return_value = [diff_emb.tolist()]
 
-        result = await self.planner._check_duplicate("Completely different topic", rag)
+        result = await self.planner._check_duplicate("Completely different topic", embed_fn)
         assert result is False
 
     @pytest.mark.asyncio
     async def test_no_previous_questions_returns_false(self):
         """With no previous questions, dedup should return False."""
-        rag = AsyncMock()
+        embed_fn = AsyncMock()
         self.planner._asked_embeddings = []
 
-        result = await self.planner._check_duplicate("Any question?", rag)
+        result = await self.planner._check_duplicate("Any question?", embed_fn)
         assert result is False
 
     @pytest.mark.asyncio
     async def test_embedding_failure_returns_false(self):
         """If embedding call fails, dedup should return False (fail open)."""
-        rag = AsyncMock()
+        embed_fn = AsyncMock()
         self.planner._asked_embeddings = [
             np.array(_make_embedding("previous question"), dtype=np.float32)
         ]
-        rag.get_embeddings = AsyncMock(side_effect=Exception("API error"))
+        embed_fn.side_effect = Exception("API error")
 
-        result = await self.planner._check_duplicate("New question?", rag)
+        result = await self.planner._check_duplicate("New question?", embed_fn)
         assert result is False
 
     def test_no_infinite_planner_loop(self):
@@ -606,18 +606,18 @@ class TestQuestionDedup:
     @pytest.mark.asyncio
     async def test_question_embedded_only_once(self):
         """dedup_and_cache_question should embed once and reuse for both dedup and cache."""
-        rag = AsyncMock()
+        embed_fn = AsyncMock()
         emb = np.array([0.5] * 768, dtype=np.float32)
         emb = emb / np.linalg.norm(emb)
-        rag.get_embeddings = AsyncMock(return_value=[emb.tolist()])
+        embed_fn.return_value = [emb.tolist()]
 
         question_text, q_type, new_emb = await self.planner.dedup_and_cache_question(
             "What is your experience with React?",
             QuestionType.PRIMARY,
-            rag,
+            embed_fn,
         )
 
-        assert rag.get_embeddings.call_count == 1
+        assert embed_fn.call_count == 1
         assert len(self.planner._asked_embeddings) == 1
         assert new_emb is not None
 

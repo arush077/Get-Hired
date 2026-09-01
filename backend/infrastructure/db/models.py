@@ -11,7 +11,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, relationship
-from pgvector.sqlalchemy import Vector
 
 
 class Base(DeclarativeBase):
@@ -84,50 +83,6 @@ class AnswerModel(Base):
     )
 
     interview = relationship("InterviewModel", back_populates="answers")
-
-
-# ── RAG tables ────────────────────────────────────────────────────
-
-
-class DocumentModel(Base):
-    __tablename__ = "documents"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    document_type = Column(String(50), nullable=False)
-    created_at = Column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-
-
-class DocumentChunkModel(Base):
-    __tablename__ = "document_chunks"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    document_id = Column(
-        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
-    )
-    chunk_index = Column(Integer, nullable=False)
-    content = Column(Text, nullable=False)
-    embedding = Column(Vector(768), nullable=False)
-    created_at = Column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-
-
-class InterviewDocumentModel(Base):
-    __tablename__ = "interview_documents"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id = Column(UUID(as_uuid=True), nullable=False)
-    resume_document_id = Column(
-        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
-    )
-    jd_document_id = Column(
-        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
-    )
-    created_at = Column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
 
 
 # ── Auth tables ──────────────────────────────────────────────────

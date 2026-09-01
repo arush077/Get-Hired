@@ -407,9 +407,9 @@ class TestTopicMap:
 
         mock_repo = MagicMock()
         mock_llm = MagicMock()
-        mock_rag = MagicMock()
+        mock_embedding = MagicMock()
         mock_planner = MagicMock()
-        service = InterviewService(mock_repo, mock_llm, mock_rag, mock_planner)
+        service = InterviewService(mock_repo, mock_llm, mock_embedding, mock_planner)
 
         interview = _make_interview(3)
         topic_map = service._build_topic_map(interview)
@@ -423,9 +423,9 @@ class TestTopicMap:
 
         mock_repo = MagicMock()
         mock_llm = MagicMock()
-        mock_rag = MagicMock()
+        mock_embedding = MagicMock()
         mock_planner = MagicMock()
-        service = InterviewService(mock_repo, mock_llm, mock_rag, mock_planner)
+        service = InterviewService(mock_repo, mock_llm, mock_embedding, mock_planner)
 
         interview = _make_interview(2)
         interview.topic_plan = []
@@ -438,9 +438,9 @@ class TestTopicMap:
 
         mock_repo = MagicMock()
         mock_llm = MagicMock()
-        mock_rag = MagicMock()
+        mock_embedding = MagicMock()
         mock_planner = MagicMock()
-        service = InterviewService(mock_repo, mock_llm, mock_rag, mock_planner)
+        service = InterviewService(mock_repo, mock_llm, mock_embedding, mock_planner)
 
         interview = _make_interview(4)
         interview.topic_plan = [

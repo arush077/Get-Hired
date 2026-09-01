@@ -139,39 +139,6 @@ class InterviewResultResponse(BaseModel):
     analysis: AnalysisResult | None = None
 
 
-# ── RAG contracts ─────────────────────────────────────────────────
-
-MAX_CHARS = 15000
-
-
-class IngestRequest(BaseModel):
-    resume_text: str = Field(..., max_length=MAX_CHARS)
-    jd_text: str = Field(..., max_length=MAX_CHARS)
-    interview_id: str | None = None
-
-
-class DocumentResult(BaseModel):
-    document_id: str
-    chunks_count: int
-
-
-class IngestResponse(BaseModel):
-    resume: DocumentResult
-    jd: DocumentResult
-
-
-class RetrieveRequest(BaseModel):
-    query: str
-    interview_id: str | None = None
-    top_k: int = 5
-    document_type: str | None = None
-
-
-class RetrieveResponse(BaseModel):
-    query: str
-    results: list[dict]
-
-
 # ── Resume contracts ──────────────────────────────────────────────
 
 

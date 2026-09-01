@@ -9,7 +9,7 @@ from domain.interview_state import InterviewState
 from domain.topic import TopicEntry, TopicStatus
 from infrastructure.repositories.base import InterviewRepositoryInterface
 from application.llm_service import LLMService
-from application.rag_service import RAGService
+from application.embedding_service import EmbeddingService
 from application.topic_planner import build_topic_plan
 from application.question_planner import QuestionPlanner, PlannerContext, MAX_QUESTIONS_PER_TOPIC
 from application.strategies.factory import InterviewStrategyFactory
@@ -23,12 +23,12 @@ class InterviewService:
         self,
         repository: InterviewRepositoryInterface,
         llm_service: LLMService,
-        rag_service: RAGService,
+        embedding_service: EmbeddingService,
         planner: QuestionPlanner,
     ):
         self._repository = repository
         self._llm = llm_service
-        self._rag = rag_service
+        self._embedding = embedding_service
         self._planner = planner
 
     async def start_interview(
@@ -237,7 +237,7 @@ class InterviewService:
                 # Dedup + embed question
                 async with Timer("dedup_and_embed").measure() as t:
                     question_text, q_type, question_emb = await self._planner.dedup_and_cache_question(
-                        question_text, q_type, self._rag
+                        question_text, q_type, self._embedding.get_embeddings
                     )
                 timer.step("dedup_and_embed", t.elapsed)
 

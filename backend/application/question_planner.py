@@ -112,13 +112,13 @@ class QuestionPlanner:
         self,
         question_text: str,
         q_type: QuestionType,
-        rag,
+        embed_fn,
     ) -> tuple[str, QuestionType, np.ndarray | None]:
         """Check dedup, embed question, cache embedding. Returns (question, type, embedding).
 
         Reuses the dedup embedding for caching — no duplicate Jina call.
         """
-        new_emb = await self._embed_question(question_text, rag)
+        new_emb = await self._embed_question(question_text, embed_fn)
 
         if new_emb is not None and self._is_duplicate(new_emb):
             logger.warning(
@@ -130,10 +130,10 @@ class QuestionPlanner:
 
         return question_text, q_type, new_emb
 
-    async def _embed_question(self, question_text: str, rag) -> np.ndarray | None:
+    async def _embed_question(self, question_text: str, embed_fn) -> np.ndarray | None:
         """Embed a question for dedup/caching. Single Jina call."""
         try:
-            emb_result = await rag.get_embeddings([question_text], task="retrieval.query")
+            emb_result = await embed_fn([question_text], task="retrieval.query")
             if emb_result:
                 return np.array(emb_result[0], dtype=np.float32)
         except Exception:
@@ -158,13 +158,13 @@ class QuestionPlanner:
         sims = np.dot(asked_matrix_normed, new_emb_normalized)
         return bool(sims.max() >= DEDUP_THRESHOLD)
 
-    async def _check_duplicate(self, new_question: str, rag) -> bool:
+    async def _check_duplicate(self, new_question: str, embed_fn) -> bool:
         """Embedding cosine similarity check. Returns True if duplicate. (Legacy method for tests.)"""
         if not self._asked_embeddings:
             return False
 
         try:
-            emb_result = await rag.get_embeddings([new_question], task="retrieval.query")
+            emb_result = await embed_fn([new_question], task="retrieval.query")
             if not emb_result:
                 return False
             new_emb = np.array(emb_result[0], dtype=np.float32)
