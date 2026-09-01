@@ -1,10 +1,11 @@
+import asyncio
 import json
 import logging
 import os
 import re
 
 from dotenv import load_dotenv
-from groq import AsyncGroq
+from groq import AsyncGroq, RateLimitError
 
 load_dotenv()
 
@@ -25,18 +26,27 @@ class LLMService:
         self._client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
 
     async def _chat(self, messages: list[dict], max_tokens: int = 512) -> str:
-        response = await self._client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=messages,
-            temperature=0.7,
-            max_tokens=max_tokens,
-        )
-        return response.choices[0].message.content.strip()
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = await self._client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=max_tokens,
+                )
+                return response.choices[0].message.content.strip()
+            except RateLimitError as e:
+                wait = min(60, 10 * (attempt + 1))
+                logger.warning("[LLM] rate limited, retry %d/%d in %ds", attempt + 1, MAX_RETRIES, wait)
+                if attempt < MAX_RETRIES - 1:
+                    await asyncio.sleep(wait)
+                else:
+                    raise
 
-    async def generate_content(self, prompt: str) -> str:
+    async def generate_content(self, prompt: str, max_tokens: int = 1024) -> str:
         """Generate content from a single prompt (used for resume AI features)."""
         messages = [{"role": "user", "content": prompt}]
-        return await self._chat(messages, max_tokens=1024)
+        return await self._chat(messages, max_tokens=max_tokens)
 
     def _parse_json(self, text: str) -> dict:
         if "```" in text:
@@ -407,10 +417,13 @@ class LLMService:
             data.setdefault("recommendations", [])
             data.setdefault("jd_match", None)
 
-            # Clamp per-question scores
+            # Clamp per-question scores & coerce None fields
             for qf in data.get("question_feedback", []):
                 if isinstance(qf, dict):
                     qf["score"] = max(0, min(100, int(qf.get("score", 0))))
+                    for field in ("what_went_well", "what_was_missing", "how_to_improve"):
+                        if not qf.get(field):
+                            qf[field] = ""
 
             return data
         except (ValueError, KeyError) as e:

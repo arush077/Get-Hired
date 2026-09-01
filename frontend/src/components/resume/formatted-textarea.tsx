@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 interface FormattedTextareaProps {
   label: string;
@@ -6,11 +6,14 @@ interface FormattedTextareaProps {
   onChange: (value: string) => void;
   onGenerate?: () => Promise<string>;
   generateDisabled?: boolean;
+  generateHint?: string;
+  cooldown?: number;
   placeholder?: string;
 }
 
-export function FormattedTextarea({ label, value, onChange, onGenerate, generateDisabled, placeholder }: FormattedTextareaProps) {
+export function FormattedTextarea({ label, value, onChange, onGenerate, generateDisabled, generateHint, cooldown, placeholder }: FormattedTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [generating, setGenerating] = useState(false);
 
   function wrapFormat(prefix: string, suffix: string) {
     const ta = textareaRef.current;
@@ -43,6 +46,21 @@ export function FormattedTextarea({ label, value, onChange, onGenerate, generate
     });
   }
 
+  async function handleGenerate() {
+    if (!onGenerate || generating) return;
+    setGenerating(true);
+    try {
+      const result = await onGenerate();
+      if (result) onChange(result);
+    } catch {
+      // Error handled silently — button just re-enables
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  const isDisabled = generateDisabled || generating || (cooldown != null && cooldown > 0);
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-1">
@@ -67,15 +85,21 @@ export function FormattedTextarea({ label, value, onChange, onGenerate, generate
           {onGenerate && (
             <button
               type="button"
-              onClick={async () => {
-                const result = await onGenerate();
-                if (result) onChange(result);
-              }}
-              disabled={generateDisabled}
+              onClick={handleGenerate}
+              disabled={isDisabled}
               className="toolbar-btn rounded-lg px-2 py-0.5 text-xs disabled:opacity-40 disabled:cursor-not-allowed"
-              title={generateDisabled ? "Fill in the fields above first" : "Generate with AI"}
+              data-tooltip={generateDisabled ? (generateHint || "Fill in the fields above first") : undefined}
+              title={
+                generating
+                  ? "Generating..."
+                  : generateDisabled
+                    ? generateHint || "Fill in the fields above first"
+                    : cooldown != null && cooldown > 0
+                      ? `Available in ${cooldown}s`
+                      : "Generate with AI"
+              }
             >
-              ✨ Generate
+              {generating ? "..." : cooldown != null && cooldown > 0 ? `${cooldown}s` : "✨ Generate"}
             </button>
           )}
         </div>

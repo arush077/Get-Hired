@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { API_BASE, getAuthHeaders } from "../../lib/api";
 import { Spinner } from "../ui/spinner";
 import type { ResumeData } from "../../hooks/useResume";
@@ -35,7 +35,28 @@ interface AnalysisPanelProps {
 export function ResumeAnalysisPanel({ resume, analysis, onAnalysis, onClose }: AnalysisPanelProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [cooldown, setCooldown] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => {
+      setCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldown > 0]);
+
+  const parseRetryAfter = useCallback((res: Response): number => {
+    const header = res.headers.get("Retry-After");
+    if (header) return parseInt(header, 10) || 60;
+    return 60;
+  }, []);
 
   function toggleGroup(priority: string) {
     setExpandedGroups((prev) => {
@@ -55,6 +76,12 @@ export function ResumeAnalysisPanel({ resume, analysis, onAnalysis, onClose }: A
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify(resume),
       });
+      if (res.status === 429) {
+        const retryAfter = parseRetryAfter(res);
+        setCooldown(retryAfter);
+        setError(`Rate limit reached. Try again in ${retryAfter}s.`);
+        return;
+      }
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         throw new Error(body?.detail || `Analysis failed (${res.status})`);
@@ -244,13 +271,17 @@ export function ResumeAnalysisPanel({ resume, analysis, onAnalysis, onClose }: A
           <div className="border-t border-white/[0.06] px-5 py-4">
             <button
               onClick={handleAnalyze}
-              disabled={loading}
+              disabled={loading || cooldown > 0}
               className="btn-gradient w-full rounded-xl py-2.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <Spinner size="sm" />
                   Analyzing...
+                </span>
+              ) : cooldown > 0 ? (
+                <span className="flex items-center justify-center gap-2">
+                  Available in {cooldown}s
                 </span>
               ) : (
                 <span className="flex items-center justify-center gap-2">

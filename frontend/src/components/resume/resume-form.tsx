@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from "react";
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { DraggableSection } from "./draggable-section";
@@ -85,12 +86,42 @@ function ItemCard({ children, onRemove }: { children: React.ReactNode; onRemove:
 }
 
 export function ResumeForm({ resume, onChange, sectionOrder, onReorder }: ResumeFormProps) {
-  async function generateDescription(type: string, context: Record<string, string>): Promise<string> {
+  const [cooldowns, setCooldowns] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const active = Object.values(cooldowns).some((v) => v > 0);
+    if (!active) return;
+    const timer = setInterval(() => {
+      setCooldowns((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const key of Object.keys(next)) {
+          if (next[key] > 0) {
+            next[key] -= 1;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [Object.values(cooldowns).some((v) => v > 0)]);
+
+  const startCooldown = useCallback((key: string, seconds: number) => {
+    setCooldowns((prev) => ({ ...prev, [key]: seconds }));
+  }, []);
+
+  async function generateDescription(type: string, context: Record<string, string>, cooldownKey: string): Promise<string> {
     const res = await fetch(`${API_BASE}/resumes/ai/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...getAuthHeaders() },
       body: JSON.stringify({ type, ...context }),
     });
+    if (res.status === 429) {
+      const retryAfter = parseInt(res.headers.get("Retry-After") || "60", 10);
+      startCooldown(cooldownKey, retryAfter);
+      return "";
+    }
     if (!res.ok) throw new Error("Failed to generate description");
     const data = await res.json();
     return data.description;
@@ -165,8 +196,10 @@ export function ResumeForm({ resume, onChange, sectionOrder, onReorder }: Resume
               label="Description"
               value={exp.description || ""}
               onChange={(v: string) => updateArray("experience", i, "description", v)}
-              onGenerate={() => generateDescription("experience", { company: exp.company, role: exp.role })}
+              onGenerate={() => generateDescription("experience", { company: exp.company, role: exp.role }, `experience-${i}`)}
               generateDisabled={!exp.company || !exp.role}
+              generateHint="Fill in Company & Role first"
+              cooldown={cooldowns[`experience-${i}`]}
               placeholder="Describe your responsibilities and achievements..."
             />
           </ItemCard>
@@ -184,8 +217,10 @@ export function ResumeForm({ resume, onChange, sectionOrder, onReorder }: Resume
               label="Description"
               value={proj.description || ""}
               onChange={(v: string) => updateArray("projects", i, "description", v)}
-              onGenerate={() => generateDescription("projects", { name: proj.name, technologies: proj.technologies })}
+              onGenerate={() => generateDescription("projects", { name: proj.name, technologies: proj.technologies }, `projects-${i}`)}
               generateDisabled={!proj.name || !proj.technologies}
+              generateHint="Fill in Name & Technologies first"
+              cooldown={cooldowns[`projects-${i}`]}
               placeholder="Describe the project, technologies, and outcomes..."
             />
           </ItemCard>
