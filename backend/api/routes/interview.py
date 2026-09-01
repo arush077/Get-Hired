@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from groq import RateLimitError
 
 from api.contracts import (
     StartInterviewRequest,
@@ -35,6 +36,8 @@ async def start_interview(
             resume_id=payload.resume_id,
             resume_text=payload.resume_text,
         )
+    except RateLimitError:
+        raise HTTPException(status_code=429, detail="AI service rate limited. Please try again in a few minutes.")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -76,7 +79,10 @@ async def submit_answer(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid interview ID")
 
-    result = await service.submit_answer(uid, payload.transcript)
+    try:
+        result = await service.submit_answer(uid, payload.transcript)
+    except RateLimitError:
+        raise HTTPException(status_code=429, detail="AI service rate limited. Please try again in a few minutes.")
     if not result:
         raise HTTPException(status_code=404, detail="Interview not found or invalid state")
 

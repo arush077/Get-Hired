@@ -1,8 +1,8 @@
 export const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const TTS_BASE = import.meta.env.VITE_TTS_URL || (API_BASE.replace(/\/api\/?$/, "") + "/tts");
 
-const RETRY_DELAYS = [3000];
-const RETRYABLE_STATUS = [502, 503, 504];
+const RETRY_DELAYS = [5000, 15000];
+const RETRYABLE_STATUS = [429, 502, 503, 504];
 
 export type InterviewMode = "RESUME_DEEP_DIVE" | "BEHAVIORAL" | "HR_SCREENING" | "MIXED";
 

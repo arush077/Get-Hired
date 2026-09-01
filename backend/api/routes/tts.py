@@ -33,8 +33,8 @@ async def tts(request: Request):
                 audio_data += chunk["data"]
                 chunk_count += 1
     except Exception as e:
-        logger.error("[TTS] stream error after %d chunks, %d bytes: %s", chunk_count, len(audio_data), e)
-        raise
+        logger.warning("[TTS] stream error after %d chunks, %d bytes: %s", chunk_count, len(audio_data), e)
+        return JSONResponse(content={"error": "TTS failed, please retry"}, status_code=503)
 
     elapsed = time.monotonic() - start
     logger.info(

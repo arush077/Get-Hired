@@ -81,6 +81,22 @@ class AuthService:
         except JWTError:
             return None
 
+    async def ensure_user_exists(self, user_id: str, email: str | None = None) -> None:
+        async with self._get_session_factory()() as session:
+            result = await session.execute(
+                select(UserModel).where(UserModel.id == UUID(user_id))
+            )
+            if result.scalar_one_or_none():
+                return
+            async with session.begin():
+                user = UserModel(
+                    id=UUID(user_id),
+                    name="Local User",
+                    email=email or f"{user_id}@local.dev",
+                    password_hash="local-only",
+                )
+                session.add(user)
+
     def _sign_token(self, user_id: UUID, email: str) -> str:
         return jwt.encode(
             {"sub": str(user_id), "email": email},

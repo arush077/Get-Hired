@@ -118,6 +118,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         user = service.verify_token(token)
 
         if user:
+            await service.ensure_user_exists(user["id"], user.get("email"))
             request.state.user = user
         else:
             request.state.user = None

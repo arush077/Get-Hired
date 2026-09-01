@@ -65,9 +65,9 @@ class AnswerRequest(BaseModel):
 class QuestionFeedback(BaseModel):
     question_number: int
     score: int = Field(ge=0, le=100)
-    what_went_well: str
-    what_was_missing: str
-    how_to_improve: str
+    what_went_well: str = ""
+    what_was_missing: str = ""
+    how_to_improve: str = ""
 
 
 class JdMatch(BaseModel):
