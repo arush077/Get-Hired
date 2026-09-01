@@ -12,3 +12,4 @@ edge-tts
 numpy
 python-jose[cryptography]
 bcrypt
+slowapi

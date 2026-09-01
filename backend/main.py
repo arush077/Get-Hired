@@ -1,12 +1,15 @@
 from contextlib import asynccontextmanager
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from infrastructure.db.session import dispose_engine, get_engine
 from infrastructure.db.models import Base
 from api.dependencies import AuthMiddleware
+from application.rate_limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +24,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="GetHired", version="2.0.0", lifespan=lifespan)
+
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    response = _rate_limit_exceeded_handler(request, exc)
+    response.headers["Access-Control-Expose-Headers"] = "Retry-After"
+    return response
+
 
 app.add_middleware(
     CORSMiddleware,

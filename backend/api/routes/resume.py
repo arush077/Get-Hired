@@ -18,6 +18,7 @@ from api.contracts import (
 from application.resume_service import ResumeService
 from application.llm_service import LLMService
 from api.dependencies import get_resume_service, get_llm_service
+from application.rate_limiter import limiter, _user_key
 
 router = APIRouter(prefix="/api/resumes", tags=["resumes"])
 
@@ -106,6 +107,7 @@ async def delete_resume(
 
 
 @router.post("/ai/generate", response_model=GenerateDescriptionResponse)
+@limiter.limit("5/minute", key_func=_user_key)
 async def generate_description(
     request: Request,
     payload: GenerateDescriptionRequest,
@@ -139,6 +141,7 @@ async def generate_description(
 
 
 @router.post("/ai/analyze")
+@limiter.limit("1/minute", key_func=_user_key)
 async def analyze_resume(
     request: Request,
     payload: AnalyzeResumeRequest,
@@ -155,7 +158,7 @@ async def analyze_resume(
     logger = logging.getLogger(__name__)
 
     try:
-        raw = await llm.generate_content(prompt)
+        raw = await llm.generate_content(prompt, max_tokens=4096)
     except Exception as e:
         logger.error("[ANALYZE] LLM call failed: %s", e)
         raise HTTPException(status_code=500, detail=f"AI service error: {type(e).__name__}")
