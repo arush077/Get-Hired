@@ -4,12 +4,12 @@ const TTS_BASE = import.meta.env.VITE_TTS_URL || (API_BASE.replace(/\/api\/?$/, 
 const RETRY_DELAYS = [5000, 15000];
 const RETRYABLE_STATUS = [429, 502, 503, 504];
 
-export type InterviewMode = "RESUME_DEEP_DIVE" | "BEHAVIORAL" | "HR_SCREENING" | "MIXED";
+export type InterviewMode = "RESUME_DEEP_DIVE" | "TECHNICAL" | "HR_SCREENING" | "MIXED";
 
 export const INTERVIEW_MODES: { value: InterviewMode; label: string; description: string }[] = [
-  { value: "MIXED", label: "Mixed Interview", description: "Balanced mix of resume, behavioral, and HR questions" },
+  { value: "MIXED", label: "Mixed Interview", description: "Balanced mix of resume, technical, and HR questions" },
   { value: "RESUME_DEEP_DIVE", label: "Resume Deep Dive", description: "Deep technical exploration of projects and experience" },
-  { value: "BEHAVIORAL", label: "Behavioral", description: "Focus on teamwork, conflict, leadership, and decision-making" },
+  { value: "TECHNICAL", label: "Technical", description: "Probe technical skills from your resume and the job description" },
   { value: "HR_SCREENING", label: "HR Screening", description: "Recruiter-style conversation about motivation and fit" },
 ];
 
@@ -185,4 +185,19 @@ export async function fetchTTS(
   });
   if (!res.ok) throw new Error("TTS request failed");
   return res.blob();
+}
+
+export async function importResume(file: File): Promise<{ id: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_BASE}/resumes/import`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail || "Import failed");
+  }
+  return res.json();
 }
