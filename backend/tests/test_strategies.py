@@ -9,7 +9,7 @@ from domain.topic import TopicEntry, TopicStatus
 from application.strategies.base import InterviewStrategy
 from application.strategies.factory import InterviewStrategyFactory
 from application.strategies.resume_deep_dive import ResumeDeepDiveStrategy
-from application.strategies.behavioral import BehavioralStrategy
+from application.strategies.technical import TechnicalStrategy
 from application.strategies.hr_screening import HRScreeningStrategy
 from application.strategies.mixed import MixedInterviewStrategy
 
@@ -21,7 +21,7 @@ class TestStrategyInterface:
     def test_all_strategies_implement_interface(self):
         strategies = [
             ResumeDeepDiveStrategy(),
-            BehavioralStrategy(),
+            TechnicalStrategy(),
             HRScreeningStrategy(),
             MixedInterviewStrategy(),
         ]
@@ -34,7 +34,7 @@ class TestStrategyInterface:
     def test_initial_planning_returns_nonempty_string(self):
         strategies = [
             ResumeDeepDiveStrategy(),
-            BehavioralStrategy(),
+            TechnicalStrategy(),
             HRScreeningStrategy(),
             MixedInterviewStrategy(),
         ]
@@ -46,7 +46,7 @@ class TestStrategyInterface:
     def test_runtime_returns_nonempty_string(self):
         strategies = [
             ResumeDeepDiveStrategy(),
-            BehavioralStrategy(),
+            TechnicalStrategy(),
             HRScreeningStrategy(),
             MixedInterviewStrategy(),
         ]
@@ -58,7 +58,7 @@ class TestStrategyInterface:
     def test_evaluation_returns_nonempty_string(self):
         strategies = [
             ResumeDeepDiveStrategy(),
-            BehavioralStrategy(),
+            TechnicalStrategy(),
             HRScreeningStrategy(),
             MixedInterviewStrategy(),
         ]
@@ -76,9 +76,9 @@ class TestInterviewStrategyFactory:
         strategy = InterviewStrategyFactory.get(InterviewMode.RESUME_DEEP_DIVE)
         assert isinstance(strategy, ResumeDeepDiveStrategy)
 
-    def test_behavioral_maps_correctly(self):
-        strategy = InterviewStrategyFactory.get(InterviewMode.BEHAVIORAL)
-        assert isinstance(strategy, BehavioralStrategy)
+    def test_technical_maps_correctly(self):
+        strategy = InterviewStrategyFactory.get(InterviewMode.TECHNICAL)
+        assert isinstance(strategy, TechnicalStrategy)
 
     def test_hr_screening_maps_correctly(self):
         strategy = InterviewStrategyFactory.get(InterviewMode.HR_SCREENING)
@@ -119,22 +119,22 @@ class TestResumeDeepDiveStrategy:
         assert "technical_depth" in text.lower() or "technical" in text.lower()
 
 
-class TestBehavioralStrategy:
-    def test_initial_mentions_behavioral(self):
-        s = BehavioralStrategy()
+class TestTechnicalStrategy:
+    def test_initial_mentions_technical(self):
+        s = TechnicalStrategy()
         text = s.get_initial_planning_instructions()
-        assert "Behavioral" in text
-        assert "teamwork" in text.lower() or "conflict" in text.lower() or "leadership" in text.lower()
+        assert "Technical" in text
+        assert "skills" in text.lower() or "system design" in text.lower() or "trade-offs" in text.lower()
 
-    def test_runtime_mentions_situations(self):
-        s = BehavioralStrategy()
+    def test_runtime_mentions_implementation(self):
+        s = TechnicalStrategy()
         text = s.get_runtime_instructions()
-        assert "example" in text.lower() or "situation" in text.lower()
+        assert "implementation" in text.lower() or "trade-offs" in text.lower()
 
-    def test_evaluation_mentions_communication(self):
-        s = BehavioralStrategy()
+    def test_evaluation_mentions_technical_depth(self):
+        s = TechnicalStrategy()
         text = s.get_evaluation_instructions()
-        assert "communication" in text.lower()
+        assert "technical_depth" in text.lower() or "correctness" in text.lower()
 
 
 class TestHRScreeningStrategy:
@@ -160,7 +160,7 @@ class TestMixedInterviewStrategy:
         s = MixedInterviewStrategy()
         text = s.get_initial_planning_instructions()
         assert "Mixed" in text
-        assert "behavioral" in text.lower() or "resume" in text.lower()
+        assert "technical" in text.lower() or "resume" in text.lower()
 
     def test_runtime_respects_question_category(self):
         s = MixedInterviewStrategy()
@@ -180,7 +180,7 @@ class TestInterviewMode:
     def test_all_modes_exist(self):
         modes = [
             InterviewMode.RESUME_DEEP_DIVE,
-            InterviewMode.BEHAVIORAL,
+            InterviewMode.TECHNICAL,
             InterviewMode.HR_SCREENING,
             InterviewMode.MIXED,
         ]
@@ -188,7 +188,7 @@ class TestInterviewMode:
 
     def test_mode_values(self):
         assert InterviewMode.RESUME_DEEP_DIVE.value == "RESUME_DEEP_DIVE"
-        assert InterviewMode.BEHAVIORAL.value == "BEHAVIORAL"
+        assert InterviewMode.TECHNICAL.value == "TECHNICAL"
         assert InterviewMode.HR_SCREENING.value == "HR_SCREENING"
         assert InterviewMode.MIXED.value == "MIXED"
 
@@ -202,8 +202,8 @@ class TestInterviewMode:
 
 class TestInterviewWithMode:
     def test_interview_has_mode_field(self):
-        interview = Interview(interview_mode=InterviewMode.BEHAVIORAL)
-        assert interview.interview_mode == InterviewMode.BEHAVIORAL
+        interview = Interview(interview_mode=InterviewMode.TECHNICAL)
+        assert interview.interview_mode == InterviewMode.TECHNICAL
 
     def test_interview_defaults_to_mixed(self):
         interview = Interview()
@@ -235,7 +235,7 @@ class TestTopicPlannerStrategyIntegration:
         }))
         mock_llm._parse_json = MagicMock(side_effect=lambda x: json.loads(x))
 
-        strategy = BehavioralStrategy()
+        strategy = TechnicalStrategy()
         await _extract_topics(
             resume_text="Resume",
             jd_text="JD",
@@ -248,7 +248,7 @@ class TestTopicPlannerStrategyIntegration:
         call_args = mock_llm._chat.call_args
         messages = call_args[0][0]
         system_content = messages[0]["content"]
-        assert "Behavioral" in system_content
+        assert "Technical" in system_content
 
     @pytest.mark.asyncio
     async def test_no_strategy_works(self):
@@ -338,7 +338,7 @@ class TestLLMStrategyIntegration:
             })))]
         ))
 
-        strategy = BehavioralStrategy()
+        strategy = TechnicalStrategy()
         context = {
             "resume_text": "Resume",
             "jd_text": "JD",
@@ -354,4 +354,4 @@ class TestLLMStrategyIntegration:
         call_args = llm._client.chat.completions.create.call_args
         messages = call_args[1]["messages"]
         system_content = messages[0]["content"]
-        assert "Behavioral" in system_content
+        assert "Technical" in system_content

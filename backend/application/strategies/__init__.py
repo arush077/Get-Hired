@@ -1,6 +1,6 @@
 from application.strategies.base import InterviewStrategy
 from application.strategies.factory import InterviewStrategyFactory
 from application.strategies.resume_deep_dive import ResumeDeepDiveStrategy
-from application.strategies.behavioral import BehavioralStrategy
+from application.strategies.technical import TechnicalStrategy
 from application.strategies.hr_screening import HRScreeningStrategy
 from application.strategies.mixed import MixedInterviewStrategy
