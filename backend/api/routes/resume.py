@@ -3,7 +3,7 @@ import logging
 import re
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 
 from api.contracts import (
     CreateResumeRequest,
@@ -17,6 +17,7 @@ from api.contracts import (
 )
 from application.resume_service import ResumeService
 from application.llm_service import LLMService
+from application.document_parser import extract_text
 from api.dependencies import get_resume_service, get_llm_service
 from application.rate_limiter import limiter, _user_key
 
@@ -48,6 +49,100 @@ async def create_resume(
 ):
     user_id = _get_user_id(request)
     resume = await service.create_resume(user_id, payload.model_dump())
+    return ResumeResponse.from_domain(resume)
+
+
+@router.post("/import", response_model=ResumeResponse, status_code=201)
+async def import_resume(
+    request: Request,
+    file: UploadFile = File(...),
+    service: ResumeService = Depends(get_resume_service),
+    llm: LLMService = Depends(get_llm_service),
+):
+    user_id = _get_user_id(request)
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    lower = file.filename.lower()
+    if not (lower.endswith(".pdf") or lower.endswith(".docx")):
+        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are supported")
+
+    file_bytes = await file.read()
+    if len(file_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+
+    try:
+        raw_text = extract_text(file.filename, file_bytes)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    prompt = f"""Extract structured resume data from the text below. Return ONLY valid JSON matching this exact structure:
+
+{{
+  "title": "Resume title (use the candidate name or 'Imported Resume')",
+  "personal_info": {{
+    "fullName": "Full name",
+    "email": "Email",
+    "phone": "Phone number",
+    "linkedin": "LinkedIn URL or empty string",
+    "github": "GitHub URL or empty string"
+  }},
+  "education": [
+    {{
+      "college": "Institution name",
+      "degree": "Degree and field of study",
+      "cgpa": "GPA/CGPA or empty string",
+      "startYear": "Start year",
+      "endYear": "End year or 'Present'"
+    }}
+  ],
+  "experience": [
+    {{
+      "company": "Company name",
+      "role": "Job title",
+      "description": "Job description with responsibilities and achievements. Use **bold** and *italic* for formatting."
+    }}
+  ],
+  "projects": [
+    {{
+      "name": "Project name",
+      "technologies": "Technologies used",
+      "description": "Project description. Use **bold** and *italic* for formatting."
+    }}
+  ],
+  "skills": "Comma-separated list of skills"
+}}
+
+Rules:
+- If a section has no data, use an empty array [] or empty string ""
+- Preserve the original content as closely as possible
+- Do not fabricate information
+- For description fields, convert bullet points to paragraphs with **bold** for action verbs
+- Return ONLY the JSON object, no markdown or code blocks
+
+Resume text:
+{raw_text}"""
+
+    try:
+        raw = await llm.generate_content(prompt, max_tokens=4096)
+        data = llm._parse_json(raw)
+    except Exception as e:
+        logger.error("[IMPORT] LLM parsing failed: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to parse resume content")
+
+    resume_data = {
+        "title": data.get("title", file.filename.rsplit(".", 1)[0]),
+        "personal_info": data.get("personal_info", {}),
+        "education": data.get("education", []),
+        "experience": data.get("experience", []),
+        "projects": data.get("projects", []),
+        "skills": data.get("skills", ""),
+        "template": "classic",
+        "section_order": ["education", "skills", "experience", "projects"],
+    }
+
+    resume = await service.create_resume(user_id, resume_data)
     return ResumeResponse.from_domain(resume)
 
 

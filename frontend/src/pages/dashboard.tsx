@@ -1,17 +1,38 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Header } from "../components/header";
 import { useResume } from "../hooks/useResume";
+import { importResume } from "../lib/api";
+import { Spinner } from "../components/ui/spinner";
 
 export function Dashboard() {
   const { resumes, loading, deleteResume } = useResume();
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
   function handleCreate() {
     const title = newTitle.trim() || "Untitled Resume";
     navigate("/builder", { state: { title } });
+  }
+
+  async function handleFileImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportError(null);
+    setImporting(true);
+    try {
+      const result = await importResume(file);
+      navigate(`/builder/${result.id}`);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   }
 
   return (
@@ -26,12 +47,38 @@ export function Dashboard() {
           <p className="text-neutral-400 text-lg mb-6">
             Create a professional resume and practice your interview skills
           </p>
+          <div className="flex items-center justify-center gap-3">
           <button
             onClick={() => setShowCreateDialog(true)}
             className="px-6 py-3 bg-gradient-to-r from-pink-500 to-red-600 text-white font-medium rounded-lg hover:from-pink-600 hover:to-red-700 transition-all"
           >
             Build New Resume
           </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.docx"
+            onChange={handleFileImport}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            className="px-6 py-3 border border-neutral-700 text-neutral-300 font-medium rounded-lg hover:bg-neutral-800 hover:text-white transition-all disabled:opacity-50"
+          >
+            {importing ? (
+              <span className="flex items-center gap-2">
+                <Spinner size="sm" />
+                Importing...
+              </span>
+            ) : (
+              "Upload Resume (PDF/DOCX)"
+            )}
+          </button>
+          </div>
+          {importError && (
+            <p className="mt-3 text-sm text-red-400">{importError}</p>
+          )}
         </div>
 
         {/* Create Dialog */}
