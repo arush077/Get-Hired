@@ -13,3 +13,6 @@ numpy
 python-jose[cryptography]
 bcrypt
 slowapi
+pdfplumber
+python-docx
+python-multipart

@@ -31,7 +31,8 @@ class InterviewService:
         self._embedding = embedding_service
         self._planner = planner
 
-    async def start_interview(
+    ##Async becuase we have API and LLM calls happenning inside making it slow, so we need async
+    async def start_interview(  
         self,
         candidate_name: str,
         job_role: str,
@@ -42,13 +43,16 @@ class InterviewService:
         resume_id: str | None = None,
         resume_text: str | None = None,
     ) -> Interview:
-        # Resolve resume text from saved resume or use provided text
+        # Resolve resume text from saved resume or use provided text  
         resolved_resume_id = None
         if resume_id:
             resolved_resume_id = UUID(resume_id)
+
+            ## Using the ResumeServcie to get the resume by sending resumeID and userID.
             from api.dependencies import get_resume_service
             resume_service = get_resume_service()
             resume = await resume_service.get_resume(resolved_resume_id, user_id)
+
             if not resume:
                 raise ValueError("Resume not found")
             resume_text = resume.to_text()
