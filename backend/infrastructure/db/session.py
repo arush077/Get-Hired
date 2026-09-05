@@ -18,7 +18,7 @@ _engine = None
 _session_factory = None
 
 _connect_args = {}
-if "localhost" not in DATABASE_URL:
+if "localhost" not in DATABASE_URL and "db" not in DATABASE_URL:
     _connect_args["ssl"] = "require"
 
 
