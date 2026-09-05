@@ -36,7 +36,7 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return response
 
 
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://get-hired-ayvz.vercel.app").split(",")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://get-hired-weld.vercel.app").split(",")
 
 app.add_middleware(
     CORSMiddleware,

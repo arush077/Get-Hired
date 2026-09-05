@@ -17,6 +17,6 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: ALLOWED_ORIGINS
-        value: https://get-hired-ayvz.vercel.app
+        value: https://get-hired-weld.vercel.app
       - key: PYTHON_VERSION
         value: 3.12.0
