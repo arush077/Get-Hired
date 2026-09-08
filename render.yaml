@@ -3,7 +3,7 @@ services:
   - type: web
     name: get-hired
     runtime: node
-    rootDir: backend-node
+    rootDir: backend
     buildCommand: npm install && npm run build
     startCommand: node dist/server.js
     healthCheckPath: /health

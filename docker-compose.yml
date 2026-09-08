@@ -9,11 +9,11 @@ services:
       - BACKEND_URL=http://backend:8000
 
   backend:
-    build: ./backend-node
+    build: ./backend
     ports:
       - "8000:8000"
     env_file:
-      - ./backend-node/.env
+      - ./backend/.env
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/gethired
     depends_on:
