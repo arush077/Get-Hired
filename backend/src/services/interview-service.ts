@@ -257,6 +257,11 @@ export class InterviewService {
 
     // On-demand analysis if completed but missing
     if (interview.status === InterviewState.COMPLETED && interview.analysis === null) {
+      getLogger().info(
+        { interviewId, analysisStatus: interview.analysisStatus },
+        "[INTERVIEW] Analysis missing, attempting generation",
+      );
+
       if (interview.analysisStatus === AnalysisStatus.PROCESSING) {
         // Background task is running — poll until it finishes (max 45s)
         for (let i = 0; i < 90; i++) {
@@ -279,12 +284,24 @@ export class InterviewService {
               refreshed.status === InterviewState.COMPLETED &&
               refreshed.analysisStatus !== AnalysisStatus.PROCESSING
             ) {
+              getLogger().info({ interviewId }, "[INTERVIEW] Starting on-demand analysis");
               await this.generateAnalysisSync(refreshed);
+              getLogger().info(
+                { interviewId, hasAnalysis: refreshed.analysis !== null },
+                "[INTERVIEW] On-demand analysis finished",
+              );
               return this.buildResultsResponse(refreshed);
             }
+          } catch (err) {
+            getLogger().error(
+              { interviewId, error: (err as Error).message },
+              "[INTERVIEW] On-demand analysis failed in getResults",
+            );
           } finally {
             this.analysisLocks.delete(lockKey);
           }
+        } else {
+          getLogger().info({ interviewId }, "[INTERVIEW] Analysis lock held, returning without analysis");
         }
       }
     }

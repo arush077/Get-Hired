@@ -25,22 +25,31 @@ export class LLMService {
     this.apiKey = getConfig().GROQ_API_KEY;
   }
 
-  async chat(messages: ChatMessage[], maxTokens = 512): Promise<string> {
+  async chat(messages: ChatMessage[], maxTokens = 512, timeoutMs = 60_000): Promise<string> {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${this.apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: GROQ_MODEL,
-            messages,
-            temperature: 0.7,
-            max_tokens: maxTokens,
-          }),
-        });
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+        let response: Response;
+        try {
+          response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${this.apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: GROQ_MODEL,
+              messages,
+              temperature: 0.7,
+              max_tokens: maxTokens,
+            }),
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timer);
+        }
 
         if (!response.ok) {
           const errorBody = await response.text();
@@ -62,6 +71,17 @@ export class LLMService {
         const data = (await response.json()) as GroqResponse;
         return data.choices[0].message.content.trim();
       } catch (err) {
+        if ((err as Error).name === "AbortError") {
+          getLogger().warn(
+            { attempt: attempt + 1, timeoutMs },
+            "[LLM] request timed out, retrying",
+          );
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise((r) => setTimeout(r, 10_000));
+            continue;
+          }
+          throw new Error(`LLM request timed out after ${MAX_RETRIES} attempts`);
+        }
         if (attempt === MAX_RETRIES - 1) throw err;
         const wait = Math.min(60, 10 * (attempt + 1));
         getLogger().warn(
@@ -384,7 +404,7 @@ export class LLMService {
       },
     ];
 
-    const raw = await this.chat(messages, 4096);
+    const raw = await this.chat(messages, 8192);
     try {
       const data = this.parseJson(raw);
 
