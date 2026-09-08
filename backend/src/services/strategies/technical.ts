@@ -3,30 +3,32 @@ import type { InterviewStrategy } from "./base.js";
 export class TechnicalStrategy implements InterviewStrategy {
   getInitialPlanningInstructions(): string {
     return (
-      "Interview mode: Technical.\n\n" +
-      "Focus on the candidate's technical skills mentioned in their Resume and the " +
-      "Job Description. Probe depth of understanding, not surface-level knowledge.\n\n" +
+      "INTERVIEW MODE: Technical.\n\n" +
+      "Prioritize the technical requirements explicitly stated in the Job Description.\n" +
+      "The Job Description is the primary source for technical topic selection.\n\n" +
+      "Use the candidate's Resume as a secondary source for grounding questions in " +
+      "technologies, projects, and engineering experience when that information exists.\n\n" +
+      "If a technology/framework/tool is explicitly required or mentioned in the JD " +
+      "but is NOT present in the Resume, still create technical questions about it.\n" +
+      "Ask conceptual, implementation, architecture, debugging, or design questions " +
+      "without claiming that the candidate has prior experience with that technology.\n\n" +
+      "Never turn a JD technical requirement into an HR, behavioral, motivation, or " +
+      "career-fit question.\n\n" +
+      "For example, if the JD mentions React.js and Node.js and the Resume is blank, " +
+      "the topic plan must still contain React.js and Node.js-focused technical topics.\n\n" +
       "Prioritize:\n" +
-      "- technical skills and tools listed in the Resume and JD\n" +
-      "- system design and architecture decisions\n" +
-      "- data structures and algorithms relevant to the role\n" +
-      "- debugging and problem-solving approaches\n" +
-      "- trade-offs between technical approaches\n" +
-      "- performance optimization\n" +
-      "- code quality and best practices\n" +
-      "- familiarity with relevant frameworks, libraries, and infrastructure\n\n" +
-      "Questions should be grounded in the candidate's Resume and the JD requirements.\n\n" +
-      "Do NOT ask generic textbook questions unless the JD explicitly requires that skill.\n\n" +
-      "For each technical skill or project mentioned, ask about:\n" +
-      "- how it works under the hood\n" +
-      "- why it was chosen over alternatives\n" +
-      "- what problems it solves\n" +
-      "- edge cases and failure modes\n" +
-      "- how the candidate would improve it\n\n" +
-      "Example style:\n" +
-      '"Your Resume mentions using Redis for caching. Walk me through your caching ' +
-      'strategy — what data did you cache, how did you handle cache invalidation, and ' +
-      'what was the measurable impact on response times?"'
+      "- technologies/frameworks explicitly mentioned in the JD\n" +
+      "- technical skills demonstrated in the Resume\n" +
+      "- APIs and backend architecture\n" +
+      "- frontend architecture\n" +
+      "- databases and data modeling\n" +
+      "- scalability and performance\n" +
+      "- debugging and failure handling\n" +
+      "- security\n" +
+      "- system design and technical trade-offs\n\n" +
+      "Do not create generic HR or behavioral topics in Technical mode.\n\n" +
+      "Do not invent candidate experience with JD technologies that are absent from " +
+      "the Resume."
     );
   }
 
