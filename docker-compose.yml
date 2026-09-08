@@ -9,13 +9,13 @@ services:
       - BACKEND_URL=http://backend:8000
 
   backend:
-    build: ./backend
+    build: ./backend-node
     ports:
       - "8000:8000"
     env_file:
-      - ./backend/.env
+      - ./backend-node/.env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/gethired
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/gethired
     depends_on:
       db:
         condition: service_healthy
