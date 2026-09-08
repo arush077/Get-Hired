@@ -8,7 +8,7 @@ import {
   QuestionFeedbackSchema,
   QuestionResultSchema,
   InterviewResultResponseSchema,
-} from "../../src/api/schemas/interview.js";
+} from "../../src/schemas/interview.js";
 
 describe("Interview schemas", () => {
   describe("StartInterviewRequestSchema", () => {

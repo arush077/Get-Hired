@@ -1,6 +1,6 @@
-import type { Interview } from "../../domain/interview.js";
-import type { Resume } from "../../domain/resume.js";
-import type { User } from "../../domain/user.js";
+import type { Interview } from "../models/interview.js";
+import type { Resume } from "../models/resume.js";
+import type { User } from "../models/user.js";
 
 // ── Repository interfaces ───────────────────────────────────────
 

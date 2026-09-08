@@ -4,7 +4,7 @@ import {
   LoginRequestSchema,
   UserResponseSchema,
   AuthResponseSchema,
-} from "../../src/api/schemas/auth.js";
+} from "../../src/schemas/auth.js";
 
 describe("Auth schemas", () => {
   describe("RegisterRequestSchema", () => {

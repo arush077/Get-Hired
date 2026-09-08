@@ -12,7 +12,7 @@ import {
   AnalysisStatus,
   nextState,
   canAcceptAnswer,
-} from "../../src/domain/index.js";
+} from "../../src/models/index.js";
 
 // ── State machine tests ─────────────────────────────────────────
 
@@ -284,7 +284,7 @@ describe("TopicEntry", () => {
 describe("Resume.toText", () => {
   it("reconstructs plain text from structured resume", async () => {
     const { Resume, ResumeEducation, ResumeExperience, ResumeProject } = await import(
-      "../../src/domain/resume.js"
+      "../../src/models/resume.js"
     );
 
     const resume = new Resume({
@@ -340,7 +340,7 @@ describe("Resume.toText", () => {
   });
 
   it("skips empty fields", async () => {
-    const { Resume } = await import("../../src/domain/resume.js");
+    const { Resume } = await import("../../src/models/resume.js");
 
     const resume = new Resume({
       personalInfo: { fullName: "Jane" },
@@ -359,7 +359,7 @@ describe("Resume.toText", () => {
   });
 
   it("returns empty string for empty resume", async () => {
-    const { Resume } = await import("../../src/domain/resume.js");
+    const { Resume } = await import("../../src/models/resume.js");
 
     const resume = new Resume({
       personalInfo: {},

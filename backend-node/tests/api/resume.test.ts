@@ -11,7 +11,7 @@ import {
   EducationInputSchema,
   ExperienceInputSchema,
   ProjectInputSchema,
-} from "../../src/api/schemas/resume.js";
+} from "../../src/schemas/resume.js";
 
 describe("Resume schemas", () => {
   describe("EducationInputSchema", () => {
