@@ -77,28 +77,52 @@ export class PostgresInterviewRepository implements InterviewRepository {
           ],
         );
 
-        // Insert new questions
+        // Batch-check existing questions
+        const qIds = interview.questions.map((q) => q.id);
+        const existingQResult = await client.query(
+          "SELECT id FROM questions WHERE interview_id = $1 AND id = ANY($2)",
+          [interview.id, qIds],
+        );
+        const existingQIds = new Set(existingQResult.rows.map((r: Record<string, unknown>) => r.id as string));
+
+        // Insert only new questions
         for (const q of interview.questions) {
-          await client.query(
-            `INSERT INTO questions (id, interview_id, question_text, question_index, question_type, created_at)
-             VALUES ($1, $2, $3, $4, $5, NOW())
-             ON CONFLICT (id) DO NOTHING`,
-            [q.id, interview.id, q.text, q.order, q.questionType],
-          );
+          if (!existingQIds.has(q.id)) {
+            await client.query(
+              `INSERT INTO questions (id, interview_id, question_text, question_index, question_type, created_at)
+               VALUES ($1, $2, $3, $4, $5, NOW())`,
+              [q.id, interview.id, q.text, q.order, q.questionType],
+            );
+          }
         }
 
-        // Insert/update answers
+        // Batch-check existing answers
+        const answerQIds = Object.entries(interview.answers)
+          .filter(([idx]) => Number(idx) < interview.questions.length)
+          .map(([idx]) => interview.questions[Number(idx)].id);
+        const existingAResult = await client.query(
+          "SELECT question_id FROM answers WHERE interview_id = $1 AND question_id = ANY($2)",
+          [interview.id, answerQIds],
+        );
+        const existingAnswerQIds = new Set(existingAResult.rows.map((r: Record<string, unknown>) => r.question_id as string));
+
+        // Insert new answers, update existing ones
         for (const [idx, a] of Object.entries(interview.answers)) {
           const index = Number(idx);
           if (index < interview.questions.length) {
             const qId = interview.questions[index].id;
-            await client.query(
-              `INSERT INTO answers (id, interview_id, question_id, transcript, answer_status, created_at)
-               VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())
-               ON CONFLICT (interview_id, question_id) DO UPDATE
-               SET transcript = $3, answer_status = $4`,
-              [interview.id, qId, a.transcript, a.answerStatus || null],
-            );
+            if (existingAnswerQIds.has(qId)) {
+              await client.query(
+                "UPDATE answers SET transcript = $1, answer_status = $2 WHERE interview_id = $3 AND question_id = $4",
+                [a.transcript, a.answerStatus || null, interview.id, qId],
+              );
+            } else {
+              await client.query(
+                `INSERT INTO answers (id, interview_id, question_id, transcript, answer_status, created_at)
+                 VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())`,
+                [interview.id, qId, a.transcript, a.answerStatus || null],
+              );
+            }
           }
         }
       } else {
