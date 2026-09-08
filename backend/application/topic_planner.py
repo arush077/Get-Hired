@@ -7,7 +7,6 @@ logger = logging.getLogger(__name__)
 
 MAX_TOPICS = 8
 
-
 async def build_topic_plan(
     resume_text: str,
     jd_text: str,

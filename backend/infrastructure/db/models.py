@@ -37,6 +37,7 @@ class InterviewModel(Base):
     topic_plan = Column(Text, nullable=False, default="[]")
     current_topic_id = Column(String(255), nullable=True)
     analysis = Column(Text, nullable=True, default=None)
+    analysis_status = Column(String(50), nullable=False, default="PENDING")
     created_at = Column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

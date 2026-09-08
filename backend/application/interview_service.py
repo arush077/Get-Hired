@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from domain.question import Question, QuestionType
 from domain.answer import Answer, AnswerStatus
 from domain.interview_state import InterviewState
 from domain.topic import TopicEntry, TopicStatus
+from domain.analysis_status import AnalysisStatus
 from infrastructure.repositories.base import InterviewRepositoryInterface
 from application.llm_service import LLMService
 from application.embedding_service import EmbeddingService
@@ -17,8 +19,11 @@ from application.timing import Timer, StepTimer
 
 logger = logging.getLogger(__name__)
 
+MAX_ANALYSIS_RETRIES = 2
+
 
 class InterviewService:
+    _analysis_locks: dict[str, asyncio.Lock] = {}
     def __init__(
         self,
         repository: InterviewRepositoryInterface,
@@ -112,15 +117,9 @@ class InterviewService:
     async def get_interview(self, interview_id: UUID) -> Interview | None:
         return await self._repository.get(interview_id)
 
-    async def submit_answer(self, interview_id: UUID, transcript: str) -> dict | None:
+    async def submit_answer(self, interview: Interview, transcript: str) -> dict | None:
         timer = StepTimer("submit_answer")
 
-        async with Timer("load_interview").measure() as t:
-            interview = await self._repository.get(interview_id)
-        timer.step("load_interview", t.elapsed)
-
-        if not interview:
-            return None
         if not interview.status.can_accept_answer():
             return None
 
@@ -221,35 +220,22 @@ class InterviewService:
                 # FOLLOW_UP: question was generated in the unified call
                 question_text = enforced["question"]
                 q_type = QuestionType.FOLLOW_UP
-            elif interview.answered_count < 2:
-                # HR question: generate separately (no RAG needed)
-                variant = "introductory" if interview.answered_count == 0 else "motivational"
-                async with Timer("generate_hr_question").measure() as t:
-                    question_text = await self._llm.generate_hr_question(
-                        candidate_name=interview.candidate_name,
-                        job_role=interview.job_role,
-                        variant=variant,
-                    )
-                q_type = QuestionType.HR
-                timer.step("generate_hr_question", t.elapsed)
             else:
                 # Fallback
                 question_text = "Can you tell me more about your experience?"
                 q_type = QuestionType.PRIMARY
 
             if question_text:
-                # Dedup + embed question
-                async with Timer("dedup_and_embed").measure() as t:
-                    question_text, q_type, question_emb = await self._planner.dedup_and_cache_question(
-                        question_text, q_type, self._embedding.get_embeddings
-                    )
-                timer.step("dedup_and_embed", t.elapsed)
-
                 new_index = len(interview.questions)
                 interview.questions.append(
                     Question(text=question_text, question_type=q_type, order=new_index)
                 )
                 interview.advance()
+
+                # Embed in background for dedup (non-blocking)
+                asyncio.create_task(
+                    self._embed_question_background(question_text, q_type)
+                )
         else:
             interview.status = InterviewState.COMPLETED
             is_complete = True
@@ -258,17 +244,9 @@ class InterviewService:
             await self._repository.save(interview)
         timer.step("save_interview", t.elapsed)
 
-        # Generate analysis after interview completes
+        # Fire-and-forget: generate analysis in background
         if interview.status == InterviewState.COMPLETED and interview.analysis is None:
-            try:
-                from application.analysis_service import AnalysisService
-                analysis_service = AnalysisService(llm=self._llm)
-                async with Timer("final_analysis").measure() as t:
-                    interview.analysis = await analysis_service.analyze(interview)
-                timer.step("final_analysis", t.elapsed)
-                await self._repository.save(interview)
-            except Exception as e:
-                logger.error("[INTERVIEW] Analysis failed: %s", e)
+            asyncio.create_task(self._run_analysis(interview.id))
 
         timer.log_summary()
 
@@ -290,6 +268,30 @@ class InterviewService:
         interview = await self._repository.get(interview_id)
         if not interview:
             return None
+
+        # On-demand analysis if completed but missing
+        if interview.status == InterviewState.COMPLETED and interview.analysis is None:
+            if interview.analysis_status == AnalysisStatus.PROCESSING:
+                # Background task is running — poll until it finishes (max 45s)
+                for _ in range(90):
+                    await asyncio.sleep(0.5)
+                    interview = await self._repository.get(interview_id)
+                    if interview and interview.analysis is not None:
+                        break
+                else:
+                    logger.warning(
+                        "[INTERVIEW] Timed out waiting for background analysis for %s",
+                        interview_id,
+                    )
+            else:
+                lock = self._get_analysis_lock(str(interview_id))
+                async with lock:
+                    # Double-check after acquiring lock
+                    interview = await self._repository.get(interview_id)
+                    if (interview and interview.analysis is None
+                            and interview.status == InterviewState.COMPLETED
+                            and interview.analysis_status != AnalysisStatus.PROCESSING):
+                        await self._generate_analysis_sync(interview)
 
         topic_map = self._build_topic_map(interview)
 
@@ -315,6 +317,78 @@ class InterviewService:
             "results": results,
             "analysis": interview.analysis,
         }
+
+    @classmethod
+    def _get_analysis_lock(cls, interview_id: str) -> asyncio.Lock:
+        if interview_id not in cls._analysis_locks:
+            cls._analysis_locks[interview_id] = asyncio.Lock()
+        return cls._analysis_locks[interview_id]
+
+    async def _generate_analysis_sync(self, interview: Interview) -> None:
+        """Generate analysis synchronously (used by on-demand fallback)."""
+        try:
+            interview.analysis_status = AnalysisStatus.PROCESSING
+            await self._repository.save(interview)
+
+            from application.analysis_service import AnalysisService
+            analysis_service = AnalysisService(llm=self._llm)
+            logger.info("[INTERVIEW] Starting on-demand analysis for %s (%d questions)", interview.id, len(interview.questions))
+            interview.analysis = await analysis_service.analyze(interview)
+            interview.analysis_status = AnalysisStatus.COMPLETED
+            await self._repository.save(interview)
+            logger.info("[INTERVIEW] On-demand analysis completed for %s, score=%s", interview.id, interview.analysis.get("overall_score") if isinstance(interview.analysis, dict) else "N/A")
+        except Exception as e:
+            logger.error("[INTERVIEW] On-demand analysis failed for %s: %s", interview.id, e, exc_info=True)
+            try:
+                interview.analysis_status = AnalysisStatus.FAILED
+                await self._repository.save(interview)
+            except Exception:
+                pass
+
+    async def _run_analysis(self, interview_id: UUID) -> None:
+        """Background analysis with bounded retries and status tracking."""
+        for attempt in range(MAX_ANALYSIS_RETRIES + 1):
+            try:
+                interview = await self._repository.get(interview_id)
+                if not interview or interview.analysis is not None:
+                    return  # Already done or gone
+
+                interview.analysis_status = AnalysisStatus.PROCESSING
+                await self._repository.save(interview)
+
+                from application.analysis_service import AnalysisService
+                analysis_service = AnalysisService(llm=self._llm)
+                interview.analysis = await analysis_service.analyze(interview)
+                interview.analysis_status = AnalysisStatus.COMPLETED
+                await self._repository.save(interview)
+                logger.info("[INTERVIEW] Background analysis completed for %s", interview_id)
+                return
+            except Exception as e:
+                logger.warning(
+                    "[INTERVIEW] Analysis attempt %d/%d failed for %s: %s",
+                    attempt + 1, MAX_ANALYSIS_RETRIES + 1, interview_id, e,
+                )
+                if attempt < MAX_ANALYSIS_RETRIES:
+                    await asyncio.sleep(2 ** (attempt + 1))
+
+        # All retries exhausted — mark as FAILED
+        try:
+            interview = await self._repository.get(interview_id)
+            if interview:
+                interview.analysis_status = AnalysisStatus.FAILED
+                await self._repository.save(interview)
+        except Exception:
+            pass
+        logger.error("[INTERVIEW] Background analysis ultimately failed for %s", interview_id)
+
+    async def _embed_question_background(self, question_text: str, q_type: QuestionType) -> None:
+        """Embed question in background for future dedup checks."""
+        try:
+            await self._planner.dedup_and_cache_question(
+                question_text, q_type, self._embedding.get_embeddings
+            )
+        except Exception as e:
+            logger.warning("[INTERVIEW] Background embedding failed: %s", e)
 
     def _build_topic_map(self, interview: Interview) -> dict[int, tuple[str, str]]:
         """Map question index -> (topic_label, topic_source)."""

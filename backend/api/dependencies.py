@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
+# Lazy-loaded singletons for all services — avoids creating instances per-request
 from infrastructure.repositories.interview_repository import PostgresInterviewRepository
 from infrastructure.repositories.resume_repository import PostgresResumeRepository
 from application.embedding_service import EmbeddingService
@@ -12,11 +13,11 @@ from application.question_planner import QuestionPlanner
 from application.interview_service import InterviewService
 from application.resume_service import ResumeService
 
+# Module-level singletons (lazy init)
 _interview_repo: PostgresInterviewRepository | None = None
 _resume_repo: PostgresResumeRepository | None = None
 _embedding_service: EmbeddingService | None = None
 _llm_service: LLMService | None = None
-_planner: QuestionPlanner | None = None
 _auth_service: AuthService | None = None
 
 
@@ -48,19 +49,12 @@ def _get_llm_service() -> LLMService:
     return _llm_service
 
 
-def _get_planner() -> QuestionPlanner:
-    global _planner
-    if _planner is None:
-        _planner = QuestionPlanner()
-    return _planner
-
-
 def get_interview_service() -> InterviewService:
     return InterviewService(
         repository=_get_interview_repo(),
         llm_service=_get_llm_service(),
         embedding_service=_get_embedding_service(),
-        planner=_get_planner(),
+        planner=QuestionPlanner(),
     )
 
 
@@ -100,24 +94,26 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
-        # Allow public paths and OPTIONS requests
+        # Allow public paths and OPTIONS requests (CORS preflight)
         if path in PUBLIC_PATHS or request.method == "OPTIONS":
             return await call_next(request)
 
-        # Allow static files and frontend
+        # Allow static files and frontend routes (non-API paths)
         if not path.startswith("/api/"):
             return await call_next(request)
 
-        # Check for auth header
+        # Check for auth header — if missing, pass through without setting user
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             return await call_next(request)
 
+        # Extract and verify JWT token
         token = auth_header.split(" ", 1)[1]
         service = get_auth_service()
         user = service.verify_token(token)
 
         if user:
+            # Ensure user exists in DB (for first-time OAuth users)
             await service.ensure_user_exists(user["id"], user.get("email"))
             request.state.user = user
         else:

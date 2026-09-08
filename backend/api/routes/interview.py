@@ -98,7 +98,7 @@ async def submit_answer(
         raise HTTPException(status_code=403, detail="Not authorized to submit answers for this interview")
 
     try:
-        result = await service.submit_answer(uid, payload.transcript)
+        result = await service.submit_answer(interview, payload.transcript)
     except RateLimitError:
         raise HTTPException(status_code=429, detail="AI service rate limited. Please try again in a few minutes.")
     if not result:

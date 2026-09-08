@@ -83,12 +83,12 @@ class AuthService:
 
     async def ensure_user_exists(self, user_id: str, email: str | None = None) -> None:
         async with self._get_session_factory()() as session:
-            result = await session.execute(
-                select(UserModel).where(UserModel.id == UUID(user_id))
-            )
-            if result.scalar_one_or_none():
-                return
             async with session.begin():
+                result = await session.execute(
+                    select(UserModel).where(UserModel.id == UUID(user_id))
+                )
+                if result.scalar_one_or_none():
+                    return
                 user = UserModel(
                     id=UUID(user_id),
                     name="Local User",

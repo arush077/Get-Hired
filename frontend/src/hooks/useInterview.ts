@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useSpeechRecognition } from "./useSpeechRecognition";
 import { useTTS } from "./useTTS";
 import {
@@ -19,9 +19,6 @@ export type InterviewState =
   | "waiting"
   | "results";
 
-const DEFAULT_VOICE = "en-IE-EmilyNeural";
-const DEFAULT_SPEED = 1.0;
-
 export function useInterview() {
   const [state, setState] = useState<InterviewState>("documents");
   const [question, setQuestion] = useState("");
@@ -35,6 +32,7 @@ export function useInterview() {
 
   const stt = useSpeechRecognition();
   const tts = useTTS();
+  const qCounterRef = useRef(0);
 
   const start = useCallback(
     async (jobRole: string, resumeText: string, jdText: string, resumeId?: string, interviewMode?: InterviewMode) => {
@@ -54,7 +52,8 @@ export function useInterview() {
         setQuestionIndex(data.question_index);
         setTotalQuestions(data.total_questions);
         setState("speaking");
-        await tts.speak(data.question, DEFAULT_VOICE, DEFAULT_SPEED);
+        qCounterRef.current = 1;
+        await tts.speak(data.question, 1);
         setState("ready");
       } catch (err) {
         console.error("[INTERVIEW] start error:", err);
@@ -96,14 +95,16 @@ export function useInterview() {
       if (data.is_clarification) {
         setQuestion(data.next_question ?? question);
         setState("speaking");
-        await tts.speak(data.next_question ?? question, DEFAULT_VOICE, DEFAULT_SPEED);
+        await tts.speak(data.next_question ?? question, qCounterRef.current);
         setState("ready");
       } else if (data.next_question) {
-        setQuestionIndex(data.next_question_index ?? questionIndex + 1);
+        const nextIdx = (data.next_question_index ?? questionIndex + 1);
+        setQuestionIndex(nextIdx);
         setTotalQuestions(data.total_questions ?? totalQuestions);
         setQuestion(data.next_question);
+        qCounterRef.current = nextIdx + 1;
         setState("speaking");
-        await tts.speak(data.next_question, DEFAULT_VOICE, DEFAULT_SPEED);
+        await tts.speak(data.next_question, nextIdx + 1);
         setState("ready");
       } else {
         if (data.analysis) setAnalysis(data.analysis);
@@ -128,7 +129,9 @@ export function useInterview() {
     setTotalQuestions(0);
     setResults([]);
     setAnalysis(null);
-  }, []);
+    qCounterRef.current = 0;
+    tts.reset();
+  }, [tts]);
 
   return {
     state,

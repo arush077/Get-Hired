@@ -6,6 +6,7 @@ from domain.answer import Answer
 from domain.interview_state import InterviewState
 from domain.interview_mode import InterviewMode
 from domain.topic import TopicEntry
+from domain.analysis_status import AnalysisStatus
 
 
 @dataclass
@@ -26,6 +27,7 @@ class Interview:
     topic_plan: list[TopicEntry] = field(default_factory=list)
     current_topic_id: str | None = None
     analysis: dict | None = None
+    analysis_status: AnalysisStatus = AnalysisStatus.PENDING
 
     @property
     def answered_count(self) -> int:

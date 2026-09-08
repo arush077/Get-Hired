@@ -1,4 +1,5 @@
 import json
+import uuid
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from domain.interview import Interview
@@ -461,3 +462,221 @@ class TestTopicMap:
         assert topic_map[1] == ("Topic A", "Uber")
         assert topic_map[2] == ("Topic B", "MergePilot")
         assert topic_map[3] == ("Topic B", "MergePilot")
+
+
+class TestAnalysisReliability:
+    """Tests for background analysis retries and on-demand fallback."""
+
+    def _make_completed_interview(self, analysis=None, analysis_status="PENDING"):
+        from domain.analysis_status import AnalysisStatus
+        from domain.interview_state import InterviewState
+        interview = _make_interview(3)
+        interview.status = InterviewState.COMPLETED
+        interview.analysis = analysis
+        interview.analysis_status = AnalysisStatus(analysis_status)
+        return interview
+
+    @pytest.mark.asyncio
+    async def test_background_analysis_succeeds(self):
+        from application.interview_service import InterviewService
+        from domain.analysis_status import AnalysisStatus
+
+        interview = self._make_completed_interview()
+        analysis_result = _mock_analysis_response()
+
+        mock_repo = AsyncMock()
+        mock_repo.get = AsyncMock(return_value=interview)
+        mock_repo.save = AsyncMock()
+
+        mock_llm = MagicMock()
+        mock_llm.generate_analysis = AsyncMock(return_value=analysis_result)
+
+        mock_embedding = MagicMock()
+        mock_planner = MagicMock()
+        service = InterviewService(mock_repo, mock_llm, mock_embedding, mock_planner)
+
+        await service._run_analysis(interview.id)
+
+        assert interview.analysis == analysis_result
+        assert interview.analysis_status == AnalysisStatus.COMPLETED
+        assert mock_repo.save.call_count >= 2
+
+    @pytest.mark.asyncio
+    async def test_background_analysis_retries_on_failure(self):
+        from application.interview_service import InterviewService
+        from domain.analysis_status import AnalysisStatus
+
+        interview = self._make_completed_interview()
+        analysis_result = _mock_analysis_response()
+
+        mock_repo = AsyncMock()
+        mock_repo.get = AsyncMock(return_value=interview)
+        mock_repo.save = AsyncMock()
+
+        mock_llm = MagicMock()
+        call_count = 0
+        async def flaky_generate(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise Exception("Transient GROQ error")
+            return analysis_result
+        mock_llm.generate_analysis = flaky_generate
+
+        mock_embedding = MagicMock()
+        mock_planner = MagicMock()
+        service = InterviewService(mock_repo, mock_llm, mock_embedding, mock_planner)
+
+        await service._run_analysis(interview.id)
+
+        assert interview.analysis == analysis_result
+        assert interview.analysis_status == AnalysisStatus.COMPLETED
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_background_analysis_all_retries_fail(self):
+        from application.interview_service import InterviewService
+        from domain.analysis_status import AnalysisStatus
+
+        interview = self._make_completed_interview()
+
+        mock_repo = AsyncMock()
+        mock_repo.get = AsyncMock(return_value=interview)
+        mock_repo.save = AsyncMock()
+
+        mock_llm = MagicMock()
+        mock_llm.generate_analysis = AsyncMock(side_effect=Exception("GROQ down"))
+
+        mock_embedding = MagicMock()
+        mock_planner = MagicMock()
+        service = InterviewService(mock_repo, mock_llm, mock_embedding, mock_planner)
+
+        await service._run_analysis(interview.id)
+
+        assert interview.analysis is None
+        assert interview.analysis_status == AnalysisStatus.FAILED
+
+    @pytest.mark.asyncio
+    async def test_get_results_generates_analysis_on_demand(self):
+        from application.interview_service import InterviewService
+        from domain.analysis_status import AnalysisStatus
+
+        interview = self._make_completed_interview()
+        analysis_result = _mock_analysis_response()
+
+        call_count = 0
+        async def mock_get(interview_id):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return interview
+            return interview
+
+        mock_repo = AsyncMock()
+        mock_repo.get = mock_get
+        mock_repo.save = AsyncMock()
+
+        mock_llm = MagicMock()
+        mock_llm.generate_analysis = AsyncMock(return_value=analysis_result)
+
+        mock_embedding = MagicMock()
+        mock_planner = MagicMock()
+        service = InterviewService(mock_repo, mock_llm, mock_embedding, mock_planner)
+
+        results = await service.get_results(interview.id)
+
+        assert results["analysis"] == analysis_result
+        assert interview.analysis_status == AnalysisStatus.COMPLETED
+
+    @pytest.mark.asyncio
+    async def test_get_results_returns_existing_analysis(self):
+        from application.interview_service import InterviewService
+
+        existing_analysis = _mock_analysis_response()
+        interview = self._make_completed_interview(analysis=existing_analysis, analysis_status="COMPLETED")
+
+        mock_repo = AsyncMock()
+        mock_repo.get = AsyncMock(return_value=interview)
+        mock_repo.save = AsyncMock()
+
+        mock_llm = MagicMock()
+        mock_llm.generate_analysis = AsyncMock()
+
+        mock_embedding = MagicMock()
+        mock_planner = MagicMock()
+        service = InterviewService(mock_repo, mock_llm, mock_embedding, mock_planner)
+
+        results = await service.get_results(interview.id)
+
+        assert results["analysis"] == existing_analysis
+        mock_llm.generate_analysis.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_non_completed_interview_no_analysis_trigger(self):
+        from application.interview_service import InterviewService
+        from domain.interview_state import InterviewState
+
+        interview = _make_interview(3)
+        interview.status = InterviewState.WAITING_FOR_ANSWER
+        interview.analysis = None
+
+        mock_repo = AsyncMock()
+        mock_repo.get = AsyncMock(return_value=interview)
+        mock_repo.save = AsyncMock()
+
+        mock_llm = MagicMock()
+        mock_llm.generate_analysis = AsyncMock()
+
+        mock_embedding = MagicMock()
+        mock_planner = MagicMock()
+        service = InterviewService(mock_repo, mock_llm, mock_embedding, mock_planner)
+
+        results = await service.get_results(interview.id)
+
+        assert results["analysis"] is None
+        mock_llm.generate_analysis.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_concurrent_get_results_no_duplicate_analysis(self):
+        from application.interview_service import InterviewService
+        from domain.analysis_status import AnalysisStatus
+        import copy
+        import asyncio
+
+        analysis_result = _mock_analysis_response()
+
+        mock_repo = AsyncMock()
+        call_count = 0
+
+        async def mock_get(interview_id):
+            nonlocal call_count
+            call_count += 1
+            interview = self._make_completed_interview()
+            return interview
+
+        mock_repo.get = mock_get
+        mock_repo.save = AsyncMock()
+
+        mock_llm = MagicMock()
+        generate_call_count = 0
+
+        async def slow_generate(*args, **kwargs):
+            nonlocal generate_call_count
+            generate_call_count += 1
+            await asyncio.sleep(0.05)
+            return analysis_result
+
+        mock_llm.generate_analysis = slow_generate
+
+        mock_embedding = MagicMock()
+        mock_planner = MagicMock()
+        service = InterviewService(mock_repo, mock_llm, mock_embedding, mock_planner)
+
+        results1, results2 = await asyncio.gather(
+            service.get_results(uuid.uuid4()),
+            service.get_results(uuid.uuid4()),
+        )
+
+        assert generate_call_count == 2
+        assert results1["analysis"] == analysis_result
+        assert results2["analysis"] == analysis_result

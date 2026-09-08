@@ -1,5 +1,4 @@
 export const API_BASE = import.meta.env.VITE_API_URL || "/api";
-const TTS_BASE = import.meta.env.VITE_TTS_URL || (API_BASE.replace(/\/api\/?$/, "") + "/tts");
 
 const RETRY_DELAYS = [5000, 15000];
 const RETRYABLE_STATUS = [429, 502, 503, 504];
@@ -169,22 +168,6 @@ export async function getResults(
     throw new Error(detail);
   }
   return res.json();
-}
-
-export async function fetchTTS(
-  text: string,
-  voice: string,
-  speed: number,
-  signal?: AbortSignal,
-): Promise<Blob> {
-  const res = await fetch(TTS_BASE, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, voice, speed }),
-    signal,
-  });
-  if (!res.ok) throw new Error("TTS request failed");
-  return res.blob();
 }
 
 export async function importResume(file: File): Promise<{ id: string }> {

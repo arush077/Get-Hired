@@ -17,10 +17,12 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Create database tables on startup if they don't exist
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
+    # Cleanup database connection on shutdown
     await dispose_engine()
 
 
@@ -36,8 +38,10 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return response
 
 
+# CORS origins from env, defaults to the deployed Vercel frontend
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://get-hired-weld.vercel.app").split(",")
 
+# CORS middleware to allow cross-origin requests from the frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -49,14 +53,12 @@ app.add_middleware(
 app.add_middleware(AuthMiddleware)
 
 from api.routes.interview import router as interview_router
-from api.routes.tts import tts_router
 from api.routes.auth import router as auth_router
 from api.routes.resume import router as resume_router
 
 app.include_router(auth_router)
 app.include_router(resume_router)
 app.include_router(interview_router)
-app.include_router(tts_router)
 
 
 @app.api_route("/health", methods=["GET", "HEAD"])

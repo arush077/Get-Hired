@@ -35,14 +35,15 @@ class AuthResponse(BaseModel):
 class StartInterviewRequest(BaseModel):
     candidate_name: str
     job_role: str
-    resume_id: str | None = None
-    resume_text: str | None = None
-    jd_text: str
+    resume_id: str | None = None  # ID of a saved resume (mutually exclusive with resume_text)
+    resume_text: str | None = None  # Raw resume text (mutually exclusive with resume_id)
+    jd_text: str  # Job description text
     total_questions: int = 10
     interview_mode: InterviewMode = InterviewMode.MIXED
 
     @model_validator(mode="after")
     def validate_resume_source(self):
+        # Must provide exactly one of resume_id or resume_text
         if not self.resume_id and not self.resume_text:
             raise ValueError("Either resume_id or resume_text is required")
         if self.resume_id and self.resume_text:
@@ -77,7 +78,7 @@ class JdMatch(BaseModel):
 
 class AnalysisResult(BaseModel):
     overall_score: int = Field(ge=0, le=100)
-    dimensions: dict[str, int] = Field(default_factory=dict)
+    dimensions: dict[str, int] = Field(default_factory=dict)  # e.g. {"technical_depth": 80, "clarity": 90}
     strengths: list[str] = Field(default_factory=list)
     areas_to_improve: list[str] = Field(default_factory=list)
     recurring_patterns: list[str] = Field(default_factory=list)
@@ -88,6 +89,7 @@ class AnalysisResult(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def coerce_and_compat(cls, data):
+        # Normalize float scores to int and ensure all required fields exist
         if isinstance(data, dict):
             if isinstance(data.get("overall_score"), float):
                 data["overall_score"] = round(data["overall_score"])
@@ -96,6 +98,7 @@ class AnalysisResult(BaseModel):
                     data["dimensions"] = {
                         k: round(v) for k, v in data["dimensions"].items()
                     }
+            # Ensure required fields have defaults
             if "dimensions" not in data:
                 data["dimensions"] = {}
             if "recurring_patterns" not in data:
@@ -204,6 +207,7 @@ class ResumeResponse(BaseModel):
 
     @classmethod
     def from_domain(cls, resume: Resume) -> "ResumeResponse":
+        # Convert domain Resume object to API response format
         return cls(
             id=str(resume.id),
             title=resume.title,

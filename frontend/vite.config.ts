@@ -9,7 +9,6 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': backendUrl,
-      '/tts': backendUrl,
     },
   },
 })

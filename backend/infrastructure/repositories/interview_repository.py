@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from domain.answer import Answer, AnswerStatus
+from domain.analysis_status import AnalysisStatus
 from domain.interview import Interview
 from domain.interview_mode import InterviewMode
 from domain.question import Question, QuestionType
@@ -42,8 +43,9 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                     existing.topic_plan = _serialize_topic_plan(interview.topic_plan)
                     existing.current_topic_id = interview.current_topic_id
                     existing.analysis = json.dumps(interview.analysis) if interview.analysis else None
+                    existing.analysis_status = interview.analysis_status.value
 
-                    # Batch-load existing question IDs and answer question_ids
+                    # Batch-load existing question IDs
                     q_ids = [q.id for q in interview.questions]
                     existing_q_result = await session.execute(
                         select(QuestionModel.id).where(
@@ -53,14 +55,15 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                     )
                     existing_q_ids = {row[0] for row in existing_q_result.all()}
 
+                    # Batch-load existing answers in one query
                     a_q_ids = [interview.questions[idx].id for idx in interview.answers if idx < len(interview.questions)]
                     existing_a_result = await session.execute(
-                        select(AnswerModel.question_id).where(
+                        select(AnswerModel).where(
                             AnswerModel.interview_id == interview.id,
                             AnswerModel.question_id.in_(a_q_ids),
                         )
                     )
-                    existing_a_q_ids = {row[0] for row in existing_a_result.all()}
+                    existing_answers = {a.question_id: a for a in existing_a_result.scalars().all()}
 
                     # Insert new questions
                     for q in interview.questions:
@@ -79,15 +82,8 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                     for idx, a in interview.answers.items():
                         if idx < len(interview.questions):
                             q_id = interview.questions[idx].id
-                            if q_id in existing_a_q_ids:
-                                # Update existing answer
-                                a_row_result = await session.execute(
-                                    select(AnswerModel).where(
-                                        AnswerModel.interview_id == interview.id,
-                                        AnswerModel.question_id == q_id,
-                                    )
-                                )
-                                a_row = a_row_result.scalar_one()
+                            if q_id in existing_answers:
+                                a_row = existing_answers[q_id]
                                 a_row.transcript = a.transcript
                                 a_row.answer_status = a.answer_status.value if a.answer_status else None
                             else:
@@ -115,6 +111,7 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
                         topic_plan=_serialize_topic_plan(interview.topic_plan),
                         current_topic_id=interview.current_topic_id,
                         analysis=json.dumps(interview.analysis) if interview.analysis else None,
+                        analysis_status=interview.analysis_status.value,
                     )
                     session.add(db_interview)
 
@@ -221,4 +218,5 @@ class PostgresInterviewRepository(InterviewRepositoryInterface):
             topic_plan=topic_plan,
             current_topic_id=db_interview.current_topic_id,
             analysis=json.loads(db_interview.analysis) if db_interview.analysis else None,
+            analysis_status=AnalysisStatus(db_interview.analysis_status) if db_interview.analysis_status else AnalysisStatus.PENDING,
         )
