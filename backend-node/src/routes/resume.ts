@@ -1,5 +1,6 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
+import { SlidingWindowStore } from "../middleware/sliding-window-store.js";
 import {
   listResumes,
   createResume,
@@ -20,6 +21,7 @@ function userKey(req: any): string {
 const analyzeLimiter = rateLimit({
   windowMs: 60_000,
   max: 1,
+  store: new SlidingWindowStore(60_000),
   keyGenerator: userKey,
   standardHeaders: true,
   legacyHeaders: false,
@@ -29,6 +31,7 @@ const analyzeLimiter = rateLimit({
 const generateLimiter = rateLimit({
   windowMs: 60_000,
   max: 5,
+  store: new SlidingWindowStore(60_000),
   keyGenerator: userKey,
   standardHeaders: true,
   legacyHeaders: false,
