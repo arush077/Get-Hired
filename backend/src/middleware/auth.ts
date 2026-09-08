@@ -15,6 +15,7 @@ const authService = new AuthService();
 const PUBLIC_PATHS = new Set([
   "/",
   "/health",
+  "/api/health",
   "/api/auth/login",
   "/api/auth/register",
 ]);

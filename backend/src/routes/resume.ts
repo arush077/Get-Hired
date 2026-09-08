@@ -1,5 +1,5 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { SlidingWindowStore } from "../middleware/sliding-window-store.js";
 import {
   listResumes,
@@ -15,7 +15,7 @@ import {
 const router = Router();
 
 function userKey(req: any): string {
-  return req.user?.id || req.ip || "unknown";
+  return req.user?.id || ipKeyGenerator(req) || "unknown";
 }
 
 const analyzeLimiter = rateLimit({
