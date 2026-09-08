@@ -1,17 +1,20 @@
 import { createApp } from "./app.js";
+import { getConfig } from "./config/env.js";
+import { getLogger } from "./logging/logger.js";
 
-const PORT = process.env.PORT ?? 8000;
+const config = getConfig();
+const logger = getLogger();
 
 const app = createApp();
 
-const server = app.listen(PORT, () => {
-  console.log(`[gethired] server listening on port ${PORT}`);
+const server = app.listen(config.PORT, () => {
+  logger.info({ port: config.PORT }, "[gethired] server listening");
 });
 
 function shutdown() {
-  console.log("[gethired] shutting down...");
+  logger.info("[gethired] shutting down...");
   server.close(() => {
-    console.log("[gethired] server closed");
+    logger.info("[gethired] server closed");
     process.exit(0);
   });
 }
