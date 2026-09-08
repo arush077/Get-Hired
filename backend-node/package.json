@@ -4,7 +4,7 @@
   "description": "Get-Hired backend — Node.js/Express/TypeScript",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch --env-file=.env src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "vitest run",
