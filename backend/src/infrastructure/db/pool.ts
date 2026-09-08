@@ -22,7 +22,7 @@ export function getPool(): pg.Pool {
         ? {}
         : {
             ssl: {
-              rejectUnauthorized: true,
+              rejectUnauthorized: false,
             },
           }),
     });
