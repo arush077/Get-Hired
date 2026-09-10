@@ -1,6 +1,0 @@
-export enum TopicStatus {
-  AVAILABLE = "AVAILABLE",
-  ACTIVE = "ACTIVE",
-  EXHAUSTED = "EXHAUSTED",
-  SKIPPED = "SKIPPED",
-}
