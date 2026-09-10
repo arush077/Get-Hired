@@ -20,7 +20,7 @@ services:
         value: https://get-hired-weld.vercel.app
       - key: NODE_VERSION
         value: 24.0.0
-      - key: GMAIL_APP_PASSWORD
+      - key: BREVO_API_KEY
         sync: false
-      - key: GMAIL_SENDER_EMAIL
+      - key: BREVO_SENDER_EMAIL
         sync: false

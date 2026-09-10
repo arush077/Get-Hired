@@ -1,37 +1,35 @@
-import nodemailer from "nodemailer";
 import { getConfig } from "../config/env.js";
 import { getLogger } from "../logging/logger.js";
 
-let _transporter = null;
-
-function getTransporter() {
-  if (_transporter) return _transporter;
-  const config = getConfig();
-  if (!config.GMAIL_APP_PASSWORD) return null;
-
-  _transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: config.GMAIL_SENDER_EMAIL,
-      pass: config.GMAIL_APP_PASSWORD,
-    },
-  });
-  return _transporter;
-}
-
 export async function sendEmail({ to, subject, text, html }) {
-  const transporter = getTransporter();
-  if (!transporter) return;
+  const config = getConfig();
+  if (!config.BREVO_API_KEY) return;
 
   try {
-    await transporter.sendMail({
-      from: `"Get-Hired" <${getConfig().GMAIL_SENDER_EMAIL}>`,
-      to,
-      subject,
-      text,
-      html,
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": config.BREVO_API_KEY,
+      },
+      body: JSON.stringify({
+        sender: {
+          name: "Get-Hired",
+          email: config.BREVO_SENDER_EMAIL,
+        },
+        to: [{ email: to }],
+        subject,
+        textContent: text,
+        htmlContent: html,
+      }),
     });
-    getLogger().info({ to, subject }, "[MAIL] Email sent");
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || JSON.stringify(error));
+    }
+
+    getLogger().info({ to, subject }, "[MAIL] Email sent via Brevo");
   } catch (err) {
     getLogger().error({ to, subject, error: err.message }, "[MAIL] Failed to send email");
   }
