@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch --env-file=.env src/server.js",
+    "build": "echo done",
     "start": "node src/server.js",
     "test": "vitest run",
     "test:watch": "vitest"
