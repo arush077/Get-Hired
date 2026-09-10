@@ -33,6 +33,8 @@ export function createApp() {
   );
 
   app.use(requestLogger);
+
+  // Express can only parse request.body if it's JSON, so we need a middleware to parse it
   app.use(express.json());
 
   app.use(healthRouter);
