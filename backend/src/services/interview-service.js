@@ -242,14 +242,9 @@ export class InterviewService {
       );
 
       if (interview.analysisStatus === AnalysisStatus.PROCESSING) {
-        for (let i = 0; i < 90; i++) {
-          await new Promise((r) => setTimeout(r, 500));
-          const refreshed = await this.repository.get(interviewId);
-          if (refreshed && refreshed.analysis !== null) {
-            return this.buildResultsResponse(refreshed);
-          }
-        }
-        getLogger().warn({ interviewId }, "[INTERVIEW] Timed out waiting for background analysis");
+        await this.waitForAnalysis(interviewId);
+        const latest = await this.repository.get(interviewId);
+        if (latest) return this.buildResultsResponse(latest);
       } else {
         const lockKey = interviewId;
         if (!this.analysisLocks.get(lockKey)) {
@@ -259,16 +254,23 @@ export class InterviewService {
             if (
               refreshed &&
               refreshed.analysis === null &&
-              refreshed.status === InterviewState.COMPLETED &&
-              refreshed.analysisStatus !== AnalysisStatus.PROCESSING
+              refreshed.status === InterviewState.COMPLETED
             ) {
-              getLogger().info({ interviewId }, "[INTERVIEW] Starting on-demand analysis");
-              await this.generateAnalysisSync(refreshed);
-              getLogger().info(
-                { interviewId, hasAnalysis: refreshed.analysis !== null },
-                "[INTERVIEW] On-demand analysis finished",
-              );
-              return this.buildResultsResponse(refreshed);
+              if (refreshed.analysisStatus === AnalysisStatus.PROCESSING) {
+                getLogger().info({ interviewId }, "[INTERVIEW] Background analysis started, polling");
+                this.analysisLocks.delete(lockKey);
+                await this.waitForAnalysis(interviewId);
+                const latest = await this.repository.get(interviewId);
+                if (latest) return this.buildResultsResponse(latest);
+              } else {
+                getLogger().info({ interviewId }, "[INTERVIEW] Starting on-demand analysis");
+                await this.generateAnalysisSync(refreshed);
+                getLogger().info(
+                  { interviewId, hasAnalysis: refreshed.analysis !== null },
+                  "[INTERVIEW] On-demand analysis finished",
+                );
+                return this.buildResultsResponse(refreshed);
+              }
             }
           } catch (err) {
             getLogger().error(
@@ -279,12 +281,30 @@ export class InterviewService {
             this.analysisLocks.delete(lockKey);
           }
         } else {
-          getLogger().info({ interviewId }, "[INTERVIEW] Analysis lock held, returning without analysis");
+          getLogger().info({ interviewId }, "[INTERVIEW] Analysis lock held, polling");
+          await this.waitForAnalysis(interviewId);
+          const latest = await this.repository.get(interviewId);
+          if (latest) return this.buildResultsResponse(latest);
         }
       }
     }
 
     return this.buildResultsResponse(interview);
+  }
+
+  async waitForAnalysis(interviewId) {
+    for (let i = 0; i < 30; i++) {
+      const delay = Math.min(500 * Math.pow(1.5, i), 5000);
+      await new Promise((r) => setTimeout(r, delay));
+      const refreshed = await this.repository.get(interviewId);
+      if (!refreshed) return;
+      if (refreshed.analysis !== null) return;
+      if (refreshed.analysisStatus === AnalysisStatus.FAILED) {
+        getLogger().warn({ interviewId }, "[INTERVIEW] Background analysis failed");
+        return;
+      }
+    }
+    getLogger().warn({ interviewId }, "[INTERVIEW] Timed out waiting for background analysis");
   }
 
   buildResultsResponse(interview) {

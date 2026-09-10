@@ -2,11 +2,11 @@ import { TopicEntry } from "../models/topic.js";
 import { TopicStatus } from "../models/topic-status.js";
 import { getLogger } from "../logging/logger.js";
 
-const MAX_TOPICS = 8;
+const MAX_TOPICS = 12;
 
 export async function buildTopicPlan(params) {
   const { resumeText, jdText, jobRole, llm, totalQuestions, strategy } = params;
-  const requestCount = Math.min(totalQuestions + 3, MAX_TOPICS);
+  const requestCount = Math.min(totalQuestions + 4, MAX_TOPICS);
   const rawTopics = await extractTopics({
     resumeText,
     jdText,

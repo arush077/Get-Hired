@@ -97,16 +97,20 @@ export function useInterview() {
         setState("ready");
       } else {
         if (data.analysis) setAnalysis(data.analysis);
-        const resData = await getResults(interviewId);
-        setResults(resData.results);
-        if (resData.analysis) setAnalysis(resData.analysis);
+        try {
+          const resData = await getResults(interviewId);
+          setResults(resData?.results ?? []);
+          if (resData?.analysis) setAnalysis(resData.analysis);
+        } catch (getErr) {
+          console.error("[INTERVIEW] getResults failed:", getErr);
+        }
         setState("results");
       }
     } catch (err) {
       console.error("[INTERVIEW] finishAnswer error:", err);
       const message = err instanceof Error ? err.message : "Something went wrong. Please try again.";
       setError(message);
-      setState("ready");
+      setState("results");
     }
   }, [stt, tts, interviewId, questionIndex, totalQuestions]);
 

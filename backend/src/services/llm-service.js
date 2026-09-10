@@ -2,6 +2,7 @@ import { getConfig } from "../config/env.js";
 import { getLogger } from "../logging/logger.js";
 
 const GROQ_MODEL = "openai/gpt-oss-120b";
+const GROQ_FAST_MODEL = "openai/gpt-oss-20b";
 const MAX_RETRIES = 3;
 
 const CONCISENESS_INSTRUCTION =
@@ -14,7 +15,7 @@ export class LLMService {
     this._apiKey = getConfig().GROQ_API_KEY;
   }
 
-  async chat(messages, maxTokens = 512, timeoutMs = 60_000) {
+  async chat(messages, maxTokens = 512, timeoutMs = 60_000, model = GROQ_MODEL) {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         const controller = new AbortController();
@@ -29,7 +30,7 @@ export class LLMService {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: GROQ_MODEL,
+              model,
               messages,
               temperature: 0.7,
               max_tokens: maxTokens,
@@ -244,7 +245,7 @@ export class LLMService {
       },
     ];
 
-    const raw = await this.chat(messages, 1024);
+    const raw = await this.chat(messages, 1024, 60_000, GROQ_FAST_MODEL);
     try {
       const data = this.parseJson(raw);
       let answerStatus = data.answer_status || "ANSWERED";
@@ -365,7 +366,7 @@ export class LLMService {
       },
     ];
 
-    const raw = await this.chat(messages, 8192);
+    const raw = await this.chat(messages, 8192, 120_000);
     try {
       const data = this.parseJson(raw);
 
