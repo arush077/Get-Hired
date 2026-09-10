@@ -7,7 +7,7 @@ let _transporter = null;
 function getTransporter() {
   if (_transporter) return _transporter;
   const config = getConfig();
-  if (!config.GMAIL_REFRESH_TOKEN) return null;
+  if (!config.GMAIL_APP_PASSWORD) return null;
 
   _transporter = nodemailer.createTransport({
     service: "gmail",
