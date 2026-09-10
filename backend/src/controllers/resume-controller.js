@@ -57,13 +57,11 @@ export async function importResume(req, res) {
   try {
     const userId = getUserId(req);
 
-    const files = req.files;
-    if (!files || !files.file || !files.file[0]) {
+    const file = req.file;
+    if (!file) {
       res.status(400).json({ detail: "No file provided" });
       return;
     }
-
-    const file = files.file[0];
     const lower = file.originalname.toLowerCase();
     if (!lower.endsWith(".pdf") && !lower.endsWith(".docx")) {
       res.status(400).json({ detail: "Only PDF and DOCX files are supported" });
