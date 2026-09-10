@@ -43,14 +43,14 @@ export class HRScreeningStrategy {
 
   getEvaluationInstructions() {
     return (
-      "EVALUATION MODE: HR Screening.\n\n" +
-      "Focus evaluation on:\n" +
-      "- communication clarity and conciseness\n" +
-      "- self-awareness and reflection\n" +
-      "- motivation and role fit\n" +
-      "- career direction and goals\n" +
-      "- cultural fit indicators\n\n" +
-      "Weight communication and clarity most heavily. " +
+      "### HR_SCREENING\n" +
+      "Focus on:\n" +
+      "- communication\n" +
+      "- motivation\n" +
+      "- role fit\n" +
+      "- self-awareness\n" +
+      "- career goals\n" +
+      "- expectations\n\n" +
       "Do not penalize lack of technical depth."
     );
   }

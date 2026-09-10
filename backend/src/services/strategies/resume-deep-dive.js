@@ -53,14 +53,15 @@ export class ResumeDeepDiveStrategy {
 
   getEvaluationInstructions() {
     return (
-      "EVALUATION MODE: Resume Deep Dive.\n\n" +
-      "Focus evaluation on:\n" +
-      "- depth of technical understanding demonstrated\n" +
-      "- specificity of examples and implementation details\n" +
-      "- ownership and personal contribution vs team effort\n" +
-      "- reasoning behind technical decisions\n" +
-      "- awareness of trade-offs and alternatives\n" +
-      "- problem-solving approach and debugging skills\n\n" +
+      "### RESUME_DEEP_DIVE\n" +
+      "Focus on:\n" +
+      "- actual experience and projects\n" +
+      "- ownership\n" +
+      "- implementation decisions\n" +
+      "- trade-offs\n" +
+      "- debugging\n" +
+      "- problem solving\n" +
+      "- measurable impact when provided\n\n" +
       "Weight technical_depth and specificity more heavily than communication."
     );
   }

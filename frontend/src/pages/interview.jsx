@@ -4,6 +4,8 @@ import { InterviewPanel } from "../components/interview-panel";
 import { ResultsPanel } from "../components/results-panel";
 import { AnimatedLines } from "../components/animated-lines";
 import { Spinner } from "../components/ui/spinner";
+import { LeaveConfirmationModal } from "../components/leave-confirmation-modal";
+import { LeaveBlockerProvider, useLeaveConfirmation } from "../hooks/useLeaveConfirmation";
 import { useInterview } from "../hooks/useInterview";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -24,9 +26,56 @@ export function Interview() {
     restart,
   } = useInterview();
 
+  const isActiveInterview = state === "speaking" || state === "ready" || state === "listening" || state === "waiting";
+  const isResults = state === "results";
+  const shouldBlock = isActiveInterview || isResults;
+
+  return (
+    <LeaveBlockerProvider shouldBlock={shouldBlock}>
+      <InterviewContent
+        state={state}
+        question={question}
+        questionIndex={questionIndex}
+        totalQuestions={totalQuestions}
+        results={results}
+        analysis={analysis}
+        transcript={transcript}
+        loading={loading}
+        error={error}
+        start={start}
+        startAnswer={startAnswer}
+        finishAnswer={finishAnswer}
+        restart={restart}
+      />
+    </LeaveBlockerProvider>
+  );
+}
+
+function InterviewContent({
+  state,
+  question,
+  questionIndex,
+  totalQuestions,
+  results,
+  analysis,
+  transcript,
+  loading,
+  error,
+  start,
+  startAnswer,
+  finishAnswer,
+  restart,
+}) {
+  const { showModal, confirmLeave, cancelLeave } = useLeaveConfirmation();
+
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-50">
       <Header />
+      <LeaveConfirmationModal
+        isOpen={showModal}
+        onConfirm={confirmLeave}
+        onCancel={cancelLeave}
+      />
       <main className="pt-24 px-4 pb-16 flex justify-center">
         <div className="w-full max-w-4xl">
           <AnimatePresence mode="wait">

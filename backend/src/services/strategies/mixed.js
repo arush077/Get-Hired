@@ -37,12 +37,9 @@ export class MixedInterviewStrategy {
 
   getEvaluationInstructions() {
     return (
-      "EVALUATION MODE: Mixed Interview.\n\n" +
-      "Evaluate across all dimensions:\n" +
-      "- technical_depth for resume/experience questions\n" +
-      "- correctness and depth for technical questions\n" +
-      "- clarity and motivation for HR questions\n\n" +
-      "Balance the evaluation across technical, depth, and communication dimensions."
+      "### MIXED\n" +
+      "Evaluate technical, resume, and HR answers according to their question type.\n" +
+      "Balance technical depth, correctness, specificity, clarity, and communication."
     );
   }
 }

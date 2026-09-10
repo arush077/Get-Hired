@@ -2,39 +2,44 @@ import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import Logo from "./ui/logo";
 import { isAuthenticated, getUser, clearAuth } from "../lib/auth";
+import { useLeaveConfirmation } from "../hooks/useLeaveConfirmation";
 
 export function Header() {
   const navigate = useNavigate();
   const [showMenu, setShowMenu] = useState(false);
   const authed = isAuthenticated();
   const user = getUser();
+  const blocker = useLeaveConfirmation();
+
+  function safeNavigate(path) {
+    blocker?.requestLeave(() => navigate(path));
+  }
 
   function handleLogout() {
     clearAuth();
     setShowMenu(false);
-    navigate("/login");
+    safeNavigate("/login");
   }
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-neutral-950/80 backdrop-blur-md px-5 py-4">
       <nav className="flex w-full items-center justify-between">
-        <Link to="/" className="flex items-center gap-1.5">
+        <button onClick={() => safeNavigate("/")} className="flex items-center gap-1.5 cursor-pointer">
           <Logo className="size-6 text-white" />
           <span className="text-base font-medium bg-gradient-to-r from-pink-500 to-red-600 bg-clip-text text-transparent">
             GetHired
           </span>
-        </Link>
+        </button>
 
         <div className="flex items-center gap-4">
-          {/* If authenticated, only then show Resume / Interview in the header */}
           {authed && (
             <>
-              <Link
-                to="/dashboard"
-                className="text-sm text-neutral-400 hover:text-white transition-colors"
+              <button
+                onClick={() => safeNavigate("/dashboard")}
+                className="text-sm text-neutral-400 hover:text-white transition-colors cursor-pointer"
               >
                 Resumes
-              </Link>
+              </button>
               <Link
                 to="/interview"
                 className="text-sm text-neutral-400 hover:text-white transition-colors"
@@ -71,7 +76,6 @@ export function Header() {
             </>
           )}
 
-          {/* If not authenticated, then show Sign in / Get Started in the header */}
           {!authed && (
             <>
               <Link

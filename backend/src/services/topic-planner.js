@@ -79,7 +79,7 @@ async function extractTopics(params) {
     },
   ];
 
-  const raw = await llm.chat(messages, 4096);
+  const raw = await llm.chat(messages, 6000);
   const data = llm.parseJson(raw);
 
   const topics = data.topics;

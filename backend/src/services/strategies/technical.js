@@ -47,14 +47,15 @@ export class TechnicalStrategy {
 
   getEvaluationInstructions() {
     return (
-      "EVALUATION MODE: Technical.\n\n" +
-      "Focus evaluation on:\n" +
-      "- depth of technical understanding (not just naming tools)\n" +
-      "- correctness of technical claims\n" +
-      "- specificity of implementation details\n" +
-      "- ability to reason about trade-offs\n" +
-      "- problem-solving approach\n" +
-      "- awareness of edge cases and failure modes\n\n" +
+      "### TECHNICAL\n" +
+      "Focus on:\n" +
+      "- technical understanding\n" +
+      "- correctness\n" +
+      "- implementation details\n" +
+      "- architecture\n" +
+      "- trade-offs\n" +
+      "- edge cases and failure handling\n" +
+      "- performance and scalability when relevant\n\n" +
       "Weight technical_depth and correctness more heavily than communication."
     );
   }

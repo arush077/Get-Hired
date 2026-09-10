@@ -1,17 +1,16 @@
-import * as pdfParseLib from "pdf-parse";
+import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
 
 const MAX_TEXT_LENGTH = 30_000;
-
-const pdfParse = pdfParseLib.default || pdfParseLib;
 
 export async function extractText(filename, fileBytes) {
   const lower = filename.toLowerCase();
   let text;
 
   if (lower.endsWith(".pdf")) {
-    const data = await pdfParse(fileBytes);
-    text = data.text.trim();
+    const parser = new PDFParse(new Uint8Array(fileBytes));
+    await parser.load();
+    text = (await parser.getText()).trim();
   } else if (lower.endsWith(".docx")) {
     const result = await mammoth.extractRawText({ buffer: fileBytes });
     text = result.value.trim();
