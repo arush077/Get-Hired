@@ -5,6 +5,8 @@ import { Signup } from "./pages/signup";
 import { Dashboard } from "./pages/dashboard";
 import { Builder } from "./pages/builder";
 import { Interview } from "./pages/interview";
+import { PrivacyPolicy } from "./pages/privacy-policy";
+import { TermsOfService } from "./pages/terms-of-service";
 import { ProtectedRoute } from "./components/auth/protected-route";
 
 
@@ -15,6 +17,8 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/terms" element={<TermsOfService />} />
         <Route
           path="/dashboard"
           element={
