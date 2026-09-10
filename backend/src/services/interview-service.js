@@ -11,6 +11,8 @@ import { buildTopicPlan } from "./topic-planner.js";
 import { InterviewStrategyFactory } from "./strategies/factory.js";
 import { AnalysisService } from "./analysis-service.js";
 import { getLogger } from "../logging/logger.js";
+import { sendInterviewResultsEmail } from "./mail-service.js";
+import { AuthService } from "./auth-service.js";
 
 const MAX_ANALYSIS_RETRIES = 2;
 
@@ -323,6 +325,7 @@ export class InterviewService {
       interview.analysis = await analysisService.analyze(interview);
       interview.analysisStatus = AnalysisStatus.COMPLETED;
       await this.repository.save(interview);
+      this.sendResultsEmail(interview).catch(() => {});
     } catch (err) {
       getLogger().error({ error: err.message }, "[INTERVIEW] On-demand analysis failed");
       try {
@@ -348,6 +351,7 @@ export class InterviewService {
         interview.analysisStatus = AnalysisStatus.COMPLETED;
         await this.repository.save(interview);
         getLogger().info({ interviewId }, "[INTERVIEW] Background analysis completed");
+        this.sendResultsEmail(interview).catch(() => {});
         return;
       } catch (err) {
         getLogger().warn(
@@ -418,5 +422,20 @@ export class InterviewService {
     }
 
     return topicMap;
+  }
+
+  async sendResultsEmail(interview) {
+    if (!interview.userId) return;
+    try {
+      const authService = new AuthService();
+      const user = await authService.getUser(interview.userId);
+      if (!user) return;
+      await sendInterviewResultsEmail(user.email, user.name, {
+        jobRole: interview.jobRole,
+        analysis: interview.analysis,
+      });
+    } catch (err) {
+      getLogger().warn({ error: err.message }, "[INTERVIEW] Failed to send results email");
+    }
   }
 }

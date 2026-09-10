@@ -11,6 +11,10 @@ const envSchema = z.object({
     .default("https://get-hired-weld.vercel.app"),
   REDIS_URL: z.string().default(""),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+  GMAIL_CLIENT_ID: z.string().default(""),
+  GMAIL_CLIENT_SECRET: z.string().default(""),
+  GMAIL_REFRESH_TOKEN: z.string().default(""),
+  GMAIL_SENDER_EMAIL: z.string().default(""),
 });
 
 function loadConfig() {

@@ -1,4 +1,5 @@
 import { AuthService } from "../services/auth-service.js";
+import { sendWelcomeEmail } from "../services/mail-service.js";
 import {
   RegisterRequestSchema,
   LoginRequestSchema,
@@ -19,6 +20,7 @@ export async function register(req, res) {
       parsed.data.email,
       parsed.data.password,
     );
+    sendWelcomeEmail(result.user.email, result.user.name).catch(() => {});
     res.status(201).json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

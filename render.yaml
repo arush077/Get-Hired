@@ -20,3 +20,11 @@ services:
         value: https://get-hired-weld.vercel.app
       - key: NODE_VERSION
         value: 24.0.0
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false
+      - key: GMAIL_SENDER_EMAIL
+        sync: false
