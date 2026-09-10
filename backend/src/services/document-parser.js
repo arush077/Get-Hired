@@ -8,9 +8,9 @@ export async function extractText(filename, fileBytes) {
   let text;
 
   if (lower.endsWith(".pdf")) {
-    const parser = new PDFParse(new Uint8Array(fileBytes));
-    await parser.load();
-    text = (await parser.getText()).trim();
+    const parser = new PDFParse({ data: new Uint8Array(fileBytes) });
+    const result = await parser.getText();
+    text = result.text.trim();
   } else if (lower.endsWith(".docx")) {
     const result = await mammoth.extractRawText({ buffer: fileBytes });
     text = result.value.trim();
