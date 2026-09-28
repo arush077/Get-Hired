@@ -12,7 +12,11 @@ export function Header() {
   const blocker = useLeaveConfirmation();
 
   function safeNavigate(path) {
-    blocker?.requestLeave(() => navigate(path));
+    if (blocker) {
+      blocker.requestLeave(() => navigate(path));
+    } else {
+      navigate(path);
+    }
   }
 
   function handleLogout() {
@@ -40,12 +44,12 @@ export function Header() {
               >
                 Resumes
               </button>
-              <Link
-                to="/interview"
-                className="text-sm text-neutral-400 hover:text-white transition-colors"
+              <button
+                onClick={() => safeNavigate("/interview")}
+                className="text-sm text-neutral-400 hover:text-white transition-colors cursor-pointer"
               >
                 Interview
-              </Link>
+              </button>
               <div className="relative">
                 <button
                   onClick={() => setShowMenu(!showMenu)}
@@ -78,12 +82,6 @@ export function Header() {
 
           {!authed && (
             <>
-              <Link
-                to="/login"
-                className="text-sm text-neutral-400 hover:text-white transition-colors"
-              >
-                Sign in
-              </Link>
               <Link
                 to="/signup"
                 className="text-sm px-4 py-1.5 bg-gradient-to-r from-pink-500 to-red-600 text-white rounded-lg hover:from-pink-600 hover:to-red-700 transition-all"

@@ -6,7 +6,6 @@ import { AnswerStatus } from "../models/answer-status.js";
 import { InterviewState } from "../models/interview-state.js";
 import { TopicStatus } from "../models/topic-status.js";
 import { AnalysisStatus } from "../models/analysis-status.js";
-import { QuestionPlanner, MAX_QUESTIONS_PER_TOPIC } from "./question-planner.js";
 import { buildTopicPlan } from "./topic-planner.js";
 import { InterviewStrategyFactory } from "./strategies/factory.js";
 import { AnalysisService } from "./analysis-service.js";

@@ -5,16 +5,12 @@ const GROQ_MODEL = "openai/gpt-oss-120b";
 const GROQ_FAST_MODEL = "openai/gpt-oss-20b";
 const MAX_RETRIES = 3;
 
-const CONCISENESS_INSTRUCTION =
-  "Ask ONE concise interview question (15-35 words). " +
-  "Focus on ONE concept. Do not combine multiple questions or requirements. " +
-  "Do not list topics to discuss — ask a single focused question. ";
-
 export class LLMService {
   constructor() {
     this._apiKey = getConfig().GROQ_API_KEY;
   }
 
+  // Actual call to the LLM happening in this function 
   async chat(messages, maxTokens = 512, timeoutMs = 60_000, model = GROQ_MODEL) {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
