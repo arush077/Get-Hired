@@ -9,7 +9,8 @@
     "start": "node src/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "db:backup-schema": "pg_dump \"$DATABASE_URL\" --schema-only --no-owner --no-privileges > database/schema.sql"
   },
   "engines": {
     "node": ">=24.0.0"
